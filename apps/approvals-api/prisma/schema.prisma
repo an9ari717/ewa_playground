@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider           = "postgresql"
+  url                = env("DATABASE_URL")          // pooled for runtime
+  directUrl          = env("DIRECT_URL")            // direct (no pgbouncer) for migrations
+  shadowDatabaseUrl  = env("SHADOW_DATABASE_URL")   // shadow schema for migrate
+}
+
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String
+  role      Role       @default(EMPLOYEE)
+  isActive  Boolean    @default(true)
+  requests  Request[]  @relation("RequesterRequests")
+  approvals Approval[] @relation("ApproverApprovals")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  assignments RequestAssignee[] @relation("UserAssignments")
+}
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  DIRECTOR
+  ADMIN
+}
+
+model RequestType {
+  id        String         @id @default(cuid())
+  key       String         @unique // e.g., "LEAVE", "PROCUREMENT"
+  name      String
+  steps     ApprovalStep[]
+  requests  Request[]      @relation("TypeRequests") // 👈 add this line
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+}
+
+model Request {
+  id          String         @id @default(cuid())
+  typeId      String
+  type        RequestType    @relation("TypeRequests", fields: [typeId], references: [id]) // 👈 add relation name
+  title       String
+  payload     Json
+  status      RequestStatus  @default(PENDING)
+  requesterId String
+  requester   User           @relation("RequesterRequests", fields: [requesterId], references: [id])
+  approvals   Approval[]
+  history     HistoryEntry[]
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  assignees   RequestAssignee[] @relation("RequestAssignments")
+}
+
+enum RequestStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+model ApprovalStep {
+  id           String      @id @default(cuid())
+  typeId       String
+  type         RequestType @relation(fields: [typeId], references: [id])
+  order        Int
+  requiredRole Role
+  name         String // e.g., "Manager Review"
+  approvals    Approval[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([typeId, order])
+}
+
+model Approval {
+  id         String       @id @default(cuid())
+  requestId  String
+  request    Request      @relation(fields: [requestId], references: [id])
+  stepId     String
+  step       ApprovalStep @relation(fields: [stepId], references: [id])
+  approverId String?
+  approver   User?        @relation("ApproverApprovals", fields: [approverId], references: [id])
+  approved   Boolean?
+  comment    String?
+  actedAt    DateTime?
+  createdAt  DateTime     @default(now())
+}
+
+model HistoryEntry {
+  id        String   @id @default(cuid())
+  requestId String
+  request   Request  @relation(fields: [requestId], references: [id])
+  step      String
+  by        String // username/email/actor label
+  role      Role?
+  comment   String?
+  date      DateTime @default(now())
+}
+
+model RequestAssignee {
+  id        String  @id @default(cuid())
+  requestId String
+  userId    String
+  stage     Role
+  active    Boolean @default(true)
+
+  request   Request @relation("RequestAssignments", fields: [requestId], references: [id], onDelete: Cascade)
+  user      User    @relation("UserAssignments",   fields: [userId],    references: [id], onDelete: Cascade)
+
+  @@index([stage, active])
+  @@index([stage, userId, active])
+}
+
