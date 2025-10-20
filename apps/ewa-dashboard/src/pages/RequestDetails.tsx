@@ -1,6 +1,9 @@
 // src/pages/RequestDetails.tsx
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import StatusBadge from "../components/requests/StatusBadge";
+import PageHeader from "../components/PageHeader";
+import Button from "../components/Button";
 
 type HistoryItem = {
   step: string;
@@ -57,34 +60,14 @@ export default function RequestDetails() {
 
   const handleAction = (action: "approve" | "reject") => {
     alert(`${action.toUpperCase()} (stub) for ${req.id} — comment: ${comment || "-"}`);
-    // later: POST /requests/:id/status
     nav(-1);
   };
 
   return (
     <div style={{ maxWidth: 980 }}>
-      <button
-        onClick={() => nav(-1)}
-        style={{
-          padding: "6px 10px",
-          borderRadius: 8,
-          border: "1px solid #e5e7eb",
-          background: "#f9fafb",
-          cursor: "pointer",
-          marginBottom: 12,
-        }}
-      >
-        ← Back
-      </button>
+      <PageHeader title="Request Details" subtitle={req.title} />
 
-      <h2 style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>
-        Request Details
-      </h2>
-      <p style={{ color: "#6b7280", marginBottom: 16 }}>
-        Review and take action on this request.
-      </p>
-
-      {/* Top meta */}
+      {/* Meta info */}
       <div
         style={{
           display: "grid",
@@ -103,7 +86,7 @@ export default function RequestDetails() {
         </div>
         <div>
           <span style={label}>Status</span>
-          <div style={value}>{req.status}</div>
+          <StatusBadge status={req.status} />
         </div>
         <div>
           <span style={label}>Submitted At</span>
@@ -190,31 +173,13 @@ export default function RequestDetails() {
         />
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => handleAction("approve")}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              border: "1px solid #111827",
-              background: "#111827",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            Approve (stub)
-          </button>
-          <button
-            onClick={() => handleAction("reject")}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              border: "1px solid #e5e7eb",
-              background: "#f9fafb",
-              cursor: "pointer",
-            }}
-          >
-            Reject (stub)
-          </button>
+          <Button variant="primary" onClick={() => handleAction("approve")}>
+            Approve
+          </Button>
+          <Button onClick={() => handleAction("reject")}>Reject</Button>
+          <Button variant="ghost" onClick={() => nav(-1)}>
+            Back
+          </Button>
         </div>
       </div>
     </div>

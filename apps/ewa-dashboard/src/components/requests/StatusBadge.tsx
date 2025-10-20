@@ -1,15 +1,37 @@
-type Props = { status: "PENDING" | "APPROVED" | "REJECTED" };
+// src/components/requests/StatusBadge.tsx
 
-export default function StatusBadge({ status }: Props) {
-  const color =
-    status === "APPROVED"
-      ? "bg-green-100 text-green-700"
-      : status === "REJECTED"
-      ? "bg-red-100 text-red-700"
-      : "bg-yellow-100 text-yellow-700";
+type Status = "PENDING" | "APPROVED" | "REJECTED";
+type Size = "sm" | "md";
+
+export default function StatusBadge({
+  status,
+  size = "md",
+}: {
+  status: Status;
+  size?: Size;
+}) {
+  const palette: Record<Status, { bg: string; fg: string }> = {
+    PENDING:  { bg: "#fff7ed", fg: "#9a3412" },   // orange-ish
+    APPROVED: { bg: "#ecfdf5", fg: "#065f46" },   // green
+    REJECTED: { bg: "#fef2f2", fg: "#991b1b" },   // red
+  };
+
+  const pad = size === "sm" ? "2px 8px" : "4px 10px";
+  const { bg, fg } = palette[status];
 
   return (
-    <span className={`px-2 py-1 rounded text-xs font-medium ${color}`}>
+    <span
+      style={{
+        display: "inline-block",
+        padding: pad,
+        borderRadius: 999,
+        fontSize: size === "sm" ? 12 : 13,
+        fontWeight: 600,
+        background: bg,
+        color: fg,
+        border: `1px solid ${fg}20`,
+      }}
+    >
       {status}
     </span>
   );
