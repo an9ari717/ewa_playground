@@ -1,119 +1,119 @@
 // src/pages/employee/MyRequests.tsx
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
+import Table from "../../components/Table";
 import Button from "../../components/Button";
+import { useRequests } from "../../hooks/useRequests";
 
 type Row = {
   id: string;
-  type: "LEAVE" | "PROCUREMENT" | "IT_SUPPORT";
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  updatedAt: string; // ISO
+  type: string;
+  title: string;
+  createdAt: string; // ISO
+  status: string;
 };
 
 export default function MyRequests() {
   const nav = useNavigate();
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
-  // 🔹 Mock data (replace with API later)
-  const rows: Row[] = useMemo(
-    () => [
-      {
-        id: "REQ-1760868222693",
-        type: "LEAVE",
-        status: "PENDING",
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: "REQ-1760868290716",
-        type: "PROCUREMENT",
-        status: "PENDING",
-        updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      },
-      {
-        id: "REQ-1760868773658",
-        type: "IT_SUPPORT",
-        status: "PENDING",
-        updatedAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-      },
-      {
-        id: "REQ-1760870029183",
-        type: "LEAVE",
-        status: "PENDING",
-        updatedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-      },
-    ],
-    []
+  const { data, isLoading, isError, refetch, isFetching } = useRequests(
+    "my",
+    undefined,
+    page,
+    pageSize
   );
 
-  const th: React.CSSProperties = {
-    textAlign: "left",
-    fontWeight: 600,
-    padding: "10px 8px",
-    borderBottom: "1px solid #e5e7eb",
-  };
-  const td: React.CSSProperties = {
-    padding: "10px 8px",
-    borderBottom: "1px solid #f3f4f6",
-  };
+  const rows: Row[] = useMemo(() => {
+    const items = data?.items ?? [];
+    return items.map((r) => ({
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      createdAt: r.createdAt,
+      status: r.status,
+    }));
+  }, [data]);
+
+  const columns = [
+    {
+      key: "id",
+      header: "ID",
+      width: 200,
+      render: (r: Row) => (
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            nav(`/app/requests/${r.id}`);
+          }}
+          style={{ textDecoration: "underline" }}
+        >
+          {r.id}
+        </a>
+      ),
+    },
+    { key: "type", header: "Type", width: 140 },
+    { key: "title", header: "Title" },
+    {
+      key: "createdAt",
+      header: "Created",
+      width: 200,
+      render: (r: Row) => new Date(r.createdAt).toLocaleString(),
+    },
+    { key: "status", header: "Status", width: 140 },
+    {
+      key: "actions",
+      header: "Actions",
+      width: 160,
+      render: (r: Row) => (
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button size="sm" variant="ghost" onClick={() => nav(`/app/requests/${r.id}`)}>
+            View
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div style={{ maxWidth: 980 }}>
       <PageHeader
         title="My Requests"
-        subtitle="Your requests will show here."
-        right={
-          <Button variant="primary" onClick={() => nav("/app/employee/request")}>
-            + New Request
-          </Button>
-        }
+        subtitle={isFetching ? "Refreshing…" : "Everything you have submitted."}
       />
 
-      <div style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "separate",
-            borderSpacing: 0,
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={th}>ID</th>
-              <th style={th}>Type</th>
-              <th style={th}>Status</th>
-              <th style={th}>Last Update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td style={td}>
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      nav(`/app/requests/${r.id}`);
-                    }}
-                    style={{ textDecoration: "underline" }}
-                  >
-                    {r.id}
-                  </a>
-                </td>
-                <td style={td}>{r.type}</td>
-                <td style={td}>{r.status}</td>
-                <td style={td}>{new Date(r.updatedAt).toLocaleString()}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ padding: 20, color: "#6b7280" }}>
-                  You have no requests yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {isLoading ? (
+        <div>Loading…</div>
+      ) : isError ? (
+        <div style={{ color: "crimson", marginBottom: 12 }}>
+          Failed to load. <button onClick={() => refetch()}>Retry</button>
+        </div>
+      ) : (
+        <>
+          <Table columns={columns} data={rows} emptyText="You haven’t submitted anything yet." />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+            <Button size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+              Prev
+            </Button>
+            <span style={{ fontSize: 12 }}>
+              Page {page} / {totalPages} • Total {total}
+            </span>
+            <Button
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

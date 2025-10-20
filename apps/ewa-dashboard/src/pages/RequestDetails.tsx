@@ -1,187 +1,135 @@
 // src/pages/RequestDetails.tsx
-import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import StatusBadge from "../components/requests/StatusBadge";
-import PageHeader from "../components/PageHeader";
+import { useParams, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
+import PageHeader from "../components/PageHeader";
+import { useRequest, useRequestHistory, useApproveReject } from "../hooks/useRequests";
+import { useState } from "react";
 
-type HistoryItem = {
-  step: string;
-  by: string;
-  role?: string;
-  date: string; // ISO
-  comment?: string;
-};
+function Labeled({ label, value }: { label: string; value: any }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+      <div style={{ color: "#555" }}>{label}</div>
+      <div>{value ?? "—"}</div>
+    </div>
+  );
+}
 
 export default function RequestDetails() {
-  const { id } = useParams<{ id: string }>();
+  const { id = "" } = useParams();
   const nav = useNavigate();
 
-  // 🔹 Mock request (replace with API later)
-  const req = useMemo(
-    () => ({
-      id: id ?? "REQ-UNKNOWN",
-      type: "LEAVE" as const,
-      title: "Annual leave — 3 days",
-      details:
-        "I’d like to request annual leave for 3 days to attend a family event.",
-      submittedBy: "isa@ewa.gov.bh",
-      submittedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-      status: "PENDING" as "PENDING" | "APPROVED" | "REJECTED",
-      meta: {
-        startDate: "2025-10-23",
-        endDate: "2025-10-25",
-      },
-      history: [
-        {
-          step: "Created",
-          by: "isa@ewa.gov.bh",
-          date: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-        },
-        {
-          step: "Pending Manager",
-          by: "system",
-          date: new Date(Date.now() - 1000 * 60 * 80).toISOString(),
-        },
-      ] as HistoryItem[],
-    }),
-    [id]
-  );
+  const { data: req, isLoading, isError, refetch } = useRequest(id);
+  const { data: history } = useRequestHistory(id);
+  const approveReject = useApproveReject(id);
 
   const [comment, setComment] = useState("");
 
-  const label: React.CSSProperties = {
-    display: "block",
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 4,
-  };
-  const value: React.CSSProperties = { fontWeight: 600, marginBottom: 10 };
+  if (isLoading) {
+    return (
+      <div style={{ maxWidth: 980 }}>
+        <PageHeader title="Request" subtitle="Loading…" />
+        <div>Loading…</div>
+      </div>
+    );
+  }
 
-  const handleAction = (action: "approve" | "reject") => {
-    alert(`${action.toUpperCase()} (stub) for ${req.id} — comment: ${comment || "-"}`);
-    nav(-1);
-  };
+  if (isError || !req) {
+    return (
+      <div style={{ maxWidth: 980 }}>
+        <PageHeader title="Request" subtitle="Couldn’t load this request." />
+        <div style={{ color: "crimson", marginBottom: 12 }}>Failed to load.</div>
+        <Button onClick={() => refetch()}>Retry</Button>
+      </div>
+    );
+  }
+
+  const canAct = !!req.currentStage; // simple gate; refine later with actual role
 
   return (
-    <div style={{ maxWidth: 980 }}>
-      <PageHeader title="Request Details" subtitle={req.title} />
+    <div style={{ maxWidth: 980, display: "grid", gap: 16 }}>
+      <PageHeader title={`Request ${req.id}`} subtitle={req.title} />
 
-      {/* Meta info */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr 1fr",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
-        <div>
-          <span style={label}>Request ID</span>
-          <div style={value}>{req.id}</div>
-        </div>
-        <div>
-          <span style={label}>Type</span>
-          <div style={value}>{req.type}</div>
-        </div>
-        <div>
-          <span style={label}>Status</span>
-          <StatusBadge status={req.status} />
-        </div>
-        <div>
-          <span style={label}>Submitted At</span>
-          <div style={value}>{new Date(req.submittedAt).toLocaleString()}</div>
-        </div>
-        <div>
-          <span style={label}>Submitted By</span>
-          <div style={value}>{req.submittedBy}</div>
-        </div>
-        {req.type === "LEAVE" && (
-          <>
-            <div>
-              <span style={label}>Start Date</span>
-              <div style={value}>{req.meta.startDate}</div>
-            </div>
-            <div>
-              <span style={label}>End Date</span>
-              <div style={value}>{req.meta.endDate}</div>
-            </div>
-          </>
-        )}
-      </div>
+      <section style={{ display: "grid", gap: 8, padding: 12, border: "1px solid #eee", borderRadius: 8 }}>
+        <Labeled label="Type" value={req.type} />
+        <Labeled label="Status" value={req.status} />
+        <Labeled label="Stage" value={req.currentStage ?? "—"} />
+        <Labeled label="Created" value={new Date(req.createdAt).toLocaleString()} />
+        <Labeled label="By" value={(req.createdBy as any)?.name ?? "—"} />
+      </section>
 
-      {/* Details */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 10,
-          padding: 14,
-          marginBottom: 20,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Details</div>
-        <div style={{ color: "#374151" }}>{req.details}</div>
-      </div>
-
-      {/* History */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 10,
-          padding: 14,
-          marginBottom: 20,
-          background: "#fff",
-        }}
-      >
+      <section style={{ padding: 12, border: "1px solid #eee", borderRadius: 8 }}>
         <div style={{ fontWeight: 600, marginBottom: 8 }}>History</div>
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {req.history.map((h, i) => (
-            <li key={i} style={{ marginBottom: 6 }}>
-              <span style={{ fontWeight: 600 }}>{h.step}</span>{" "}
-              — {h.by} — {new Date(h.date).toLocaleString()}
-              {h.comment ? <> — <i>{h.comment}</i></> : null}
-            </li>
-          ))}
-        </ul>
-      </div>
+        {!history || history.length === 0 ? (
+          <div>—</div>
+        ) : (
+          <ul style={{ display: "grid", gap: 6, paddingLeft: 16 }}>
+            {history.map((h, i) => (
+              <li key={i}>
+                <span style={{ fontWeight: 500 }}>{h.step}</span>{" "}
+                {h.role ? `• ${h.role}` : ""} {h.by ? `• ${h.by}` : ""} •{" "}
+                {new Date(h.date).toLocaleString()}
+                {h.comment ? ` — ${h.comment}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      {/* Actions */}
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 10,
-          padding: 14,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 10 }}>Manager Action (stub)</div>
+      {/* Approve / Reject */}
+      <section style={{ padding: 12, border: "1px solid #eee", borderRadius: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontWeight: 600 }}>Decision</div>
+          {!canAct && <span style={{ fontSize: 12, color: "#777" }}>No action available at this stage.</span>}
+        </div>
 
         <textarea
-          placeholder="Optional comment"
+          placeholder="Optional comment…"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           style={{
             width: "100%",
-            minHeight: 90,
-            resize: "vertical",
-            padding: "10px 12px",
+            height: 80,
+            padding: 8,
             borderRadius: 8,
-            border: "1px solid #e5e7eb",
-            marginBottom: 12,
+            border: "1px solid #ddd",
+            marginBottom: 10,
+            resize: "vertical",
           }}
         />
 
         <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="primary" onClick={() => handleAction("approve")}>
-            Approve
+          <Button
+            variant="primary"
+            disabled={!canAct || approveReject.isPending}
+            onClick={() =>
+              approveReject.mutate(
+                { approved: true, comment: comment || undefined },
+                {
+                  onSuccess: () => nav("/app/inbox"),
+                }
+              )
+            }
+          >
+            {approveReject.isPending ? "Saving…" : "Approve"}
           </Button>
-          <Button onClick={() => handleAction("reject")}>Reject</Button>
+          <Button
+            disabled={!canAct || approveReject.isPending}
+            onClick={() =>
+              approveReject.mutate(
+                { approved: false, comment: comment || undefined },
+                {
+                  onSuccess: () => nav("/app/inbox"),
+                }
+              )
+            }
+          >
+            {approveReject.isPending ? "Saving…" : "Reject"}
+          </Button>
           <Button variant="ghost" onClick={() => nav(-1)}>
             Back
           </Button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
