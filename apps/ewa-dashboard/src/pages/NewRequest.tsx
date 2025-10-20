@@ -1,5 +1,6 @@
 // src/pages/NewRequest.tsx
 import { useState } from "react";
+import PageHeader from "../components/PageHeader";
 
 export default function NewRequest() {
   const [type, setType] = useState("Leave");
@@ -8,10 +9,7 @@ export default function NewRequest() {
 
   return (
     <div style={{ display: "grid", gap: 12, maxWidth: 720 }}>
-      <h2 style={{ margin: 0 }}>Create Request</h2>
-      <div style={{ color: "var(--muted)", fontSize: 14 }}>
-        Placeholder form (we’ll wire to backend later).
-      </div>
+     <PageHeader title="New Request" subtitle="Submit a new request for approval" />
 
       <label style={{ display: "grid", gap: 6 }}>
         <span>Type</span>

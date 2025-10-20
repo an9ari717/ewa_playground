@@ -1,61 +1,78 @@
 // src/pages/Archive.tsx
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import Table from "../components/Table";
+import PageHeader from "../components/PageHeader";
 
-type ArchiveRow = {
+type Row = {
   id: string;
+  type: "LEAVE" | "PROCUREMENT" | "IT_SUPPORT";
   title: string;
-  type: string;
   finalStatus: "APPROVED" | "REJECTED";
-  closedAt: string;
+  closedAt: string; // ISO
+  handledBy: string;
 };
 
 export default function Archive() {
-  // 🔹 mock archived items (we’ll wire backend later)
-  const data: ArchiveRow[] = [
-    { id: "REQ-1009", title: "Travel claim — Dubai",   type: "Finance", finalStatus: "APPROVED", closedAt: "2025-10-06 13:21" },
-    { id: "REQ-1008", title: "Sick leave — 1 day",     type: "Leave",   finalStatus: "REJECTED", closedAt: "2025-10-05 09:02" },
-    { id: "REQ-1007", title: "Monitor upgrade",        type: "IT",      finalStatus: "APPROVED", closedAt: "2025-10-04 15:47" },
-  ];
+  const nav = useNavigate();
+
+  const rows: Row[] = useMemo(
+    () => [
+      {
+        id: "REQ-1760867111111",
+        type: "LEAVE",
+        title: "Annual leave — 5 days",
+        finalStatus: "APPROVED",
+        closedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
+        handledBy: "director@ewa.gov.bh",
+      },
+      {
+        id: "REQ-1760867222222",
+        type: "PROCUREMENT",
+        title: "Monitor 27”",
+        finalStatus: "REJECTED",
+        closedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(),
+        handledBy: "manager@ewa.gov.bh",
+      },
+    ],
+    []
+  );
 
   const columns = [
-    { key: "id", header: "ID", width: "140px" },
-    { key: "title", header: "Request", width: "2fr" },
-    { key: "type", header: "Type", width: "1fr" },
     {
-      key: "finalStatus",
-      header: "Final",
-      width: "140px",
-      render: (row: ArchiveRow) => {
-        const isApproved = row.finalStatus === "APPROVED";
-        return (
-          <span
-            style={{
-              background: isApproved ? "#ECFDF5" : "#FEF2F2",
-              color: isApproved ? "#065F46" : "#991B1B",
-              padding: "4px 8px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {row.finalStatus}
-          </span>
-        );
-      },
+      key: "id",
+      header: "ID",
+      render: (r: Row) => (
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            nav(`/app/requests/${r.id}`);
+          }}
+          style={{ textDecoration: "underline" }}
+        >
+          {r.id}
+        </a>
+      ),
     },
-    { key: "closedAt", header: "Closed", width: "170px" },
+    { key: "type", header: "Type" },
+    { key: "title", header: "Title" },
+    { key: "finalStatus", header: "Final Status" },
+    {
+      key: "closedAt",
+      header: "Closed At",
+      render: (r: Row) => new Date(r.closedAt).toLocaleString(),
+    },
+    { key: "handledBy", header: "Handled By" },
   ];
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <div>
-        <h2 style={{ margin: 0, marginBottom: 4 }}>Archive</h2>
-        <div style={{ color: "var(--muted)", fontSize: 14 }}>
-          Completed / rejected requests (mock data for now)
-        </div>
-      </div>
-
-      <Table<ArchiveRow> columns={columns} data={data} emptyText="No archived requests." />
+    <div style={{ maxWidth: 980 }}>
+      <PageHeader
+        title="Archive"
+        subtitle="Completed or closed requests."
+      />
+      <Table columns={columns} data={rows} emptyText="Nothing archived yet." />
     </div>
   );
 }

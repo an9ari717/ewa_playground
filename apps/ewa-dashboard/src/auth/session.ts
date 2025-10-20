@@ -1,12 +1,24 @@
-// src/auth/session.ts
+const KEY = "ewa_email";
+
+// Safe localStorage access (prevents crashes in non-browser contexts)
+const storage =
+  typeof window !== "undefined" && window?.localStorage
+    ? window.localStorage
+    : {
+        getItem: (_: string) => null,
+        setItem: (_: string, __: string) => {},
+        removeItem: (_: string) => {},
+      };
+
 export const auth = {
   getEmail(): string | null {
-    return localStorage.getItem("ewa_email");
+    const v = storage.getItem(KEY);
+    return v && v.trim() ? v : null;
   },
   setEmail(email: string) {
-    localStorage.setItem("ewa_email", email);
+    storage.setItem(KEY, email);
   },
   clear() {
-    localStorage.removeItem("ewa_email");
+    storage.removeItem(KEY);
   },
 };

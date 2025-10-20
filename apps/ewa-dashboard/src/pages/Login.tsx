@@ -1,18 +1,29 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { auth } from "../auth/session";
 
 export default function Login() {
   const nav = useNavigate();
+  const location = useLocation() as any;
   const [email, setEmail] = useState("");
 
-  // ✅ redirect if already signed in
+  // If already signed in, go straight to app
   useEffect(() => {
     const existing = auth.getEmail();
     if (existing) {
-      nav("/dashboard");
+      nav("/app/dashboard", { replace: true });
     }
   }, [nav]);
+
+  const handleContinue = () => {
+    const e = email.trim();
+    if (!e) return;
+    auth.setEmail(e);
+
+    // If we were sent here by RequireAuth, go back there; otherwise inbox
+    const to = location?.state?.from?.pathname ?? "/app/inbox";
+    nav(to, { replace: true });
+  };
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
@@ -29,15 +40,11 @@ export default function Login() {
           placeholder="email@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleContinue()}
           style={{ width: "100%", padding: 10, marginBottom: 12 }}
         />
         <button
-          onClick={() => {
-            if (email.trim()) {
-              auth.setEmail(email.trim());
-              nav("/inbox");
-            }
-          }}
+          onClick={handleContinue}
           style={{ width: "100%", padding: 10, cursor: "pointer" }}
         >
           Continue
