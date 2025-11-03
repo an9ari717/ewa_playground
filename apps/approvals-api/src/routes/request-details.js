@@ -1,34 +1,20 @@
 // apps/approvals-api/src/routes/request-details.js
-import express from "express";
+const express = require("express");
+const router = express.Router();
 
-export const requestDetailsRouter = express.Router();
+// Health for quick check: GET /api/request-details/ping
+router.get("/ping", (_req, res) => res.json({ ok: true }));
 
-/**
- * Minimal request details endpoint the frontend expects.
- * URL: GET /requests/:id?role=...&userId=...&by=...
- */
-requestDetailsRouter.get("/requests/:id", async (req, res) => {
-  const { id } = req.params;
-  const { role, userId, by } = req.query;
-
-  // TODO: replace this stub with a real DB lookup if/when you have it.
-  // For now, return a valid shape so the UI can render.
-  const now = new Date().toISOString();
-
-  res.json({
-    id,
-    typeId: "DEMO",
-    title: `Request #${id}`,
-    payload: { example: true, note: "Replace with real payload" },
-    status: "PENDING",
-    requesterId: userId || "unknown",
-    requester: by ? { id: userId || "unknown", name: "Demo User", email: by } : null,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-    pendingWith: role || "MANAGER",
-    history: [
-      { step: "Created", by: by || "noreply@demo.local", role: "EMPLOYEE", date: now, comment: "Demo" }
-    ],
-  });
+// Approve: POST /api/request-details/:id/approve
+router.post("/:id/approve", async (req, res) => {
+  // TODO: replace with real DB logic later
+  res.json({ ok: true, id: req.params.id, action: "approve" });
 });
+
+// Reject: POST /api/request-details/:id/reject
+router.post("/:id/reject", async (req, res) => {
+  // TODO: replace with real DB logic later
+  res.json({ ok: true, id: req.params.id, action: "reject" });
+});
+
+module.exports = router;

@@ -1,29 +1,91 @@
 // src/pages/employee/RequestNew.tsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../../lib/api";
 
 export default function RequestNew() {
   const nav = useNavigate();
 
-  // Skeleton state only (no API yet)
-  const [type, setType] = useState("LEAVE");
+  // form state
+  const [typeKey, setTypeKey] = useState("LEAVE"); // <-- matches backend: requestType.key
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // ui state
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // For now just log and navigate to "My Requests"
-    console.log("NEW REQUEST (stub)", {
-      type,
-      title,
-      details,
-      startDate,
-      endDate,
-    });
-    nav("/app/employee/requests");
-  };
+    setErrorMsg(null);
+
+    if (!title.trim()) {
+      setErrorMsg("Please enter a title.");
+      return;
+    }
+
+    // read current user email from localStorage
+    // we already saw you store it under ewa.user like { "email": "..." }
+    let requesterEmail = "";
+    try {
+      const raw = localStorage.getItem("ewa.user");
+      if (raw) {
+        const obj = JSON.parse(raw);
+        requesterEmail = obj?.email || "";
+      }
+    } catch {
+      requesterEmail = "";
+    }
+
+    if (!requesterEmail) {
+      setErrorMsg("No requester email found. Are you logged in?");
+      return;
+    }
+
+    // build payload (goes into request.payload in DB)
+    const payload: Record<string, any> = {
+      reason: details || "",
+    };
+
+    if (typeKey === "LEAVE") {
+      payload.from = startDate || null;
+      payload.to = endDate || null;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post(
+        "/requests",
+        {
+          requesterEmail,
+          typeKey, // <-- backend needs this, not "type"
+          title,
+          payload,
+        },
+        {
+          headers: {
+            // helps backend actor / RLS logic
+            "x-user-email": requesterEmail,
+          },
+        }
+      );
+
+      console.log("Created request:", res.data);
+
+      // after success: go to My Requests (employee view)
+      nav("/app/employee/requests", { replace: true });
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(
+        err?.response?.data?.error ||
+          err?.message ||
+          "Something went wrong while submitting."
+      );
+      setSubmitting(false);
+    }
+  }
 
   const fieldWrap: React.CSSProperties = { marginBottom: 14 };
   const label: React.CSSProperties = {
@@ -45,14 +107,31 @@ export default function RequestNew() {
         New Request
       </h2>
 
+      {errorMsg && (
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            border: "1px solid #fecaca",
+            borderRadius: 8,
+            padding: "8px 10px",
+            fontSize: 13,
+            marginBottom: 16,
+          }}
+        >
+          {errorMsg}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         {/* Request Type */}
         <div style={fieldWrap}>
           <label style={label}>Request Type</label>
           <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
+            value={typeKey}
+            onChange={(e) => setTypeKey(e.target.value)}
             style={input}
+            disabled={submitting}
           >
             <option value="LEAVE">Leave</option>
             <option value="PROCUREMENT">Procurement</option>
@@ -68,10 +147,11 @@ export default function RequestNew() {
             placeholder="Short title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={submitting}
           />
         </div>
 
-        {/* Details */}
+        {/* Details / Reason */}
         <div style={fieldWrap}>
           <label style={label}>Details</label>
           <textarea
@@ -79,12 +159,19 @@ export default function RequestNew() {
             placeholder="Describe your request..."
             value={details}
             onChange={(e) => setDetails(e.target.value)}
+            disabled={submitting}
           />
         </div>
 
-        {/* Date range (optional, shown for LEAVE type) */}
-        {type === "LEAVE" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {/* Date range (for LEAVE only) */}
+        {typeKey === "LEAVE" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
             <div style={fieldWrap}>
               <label style={label}>Start Date</label>
               <input
@@ -92,6 +179,7 @@ export default function RequestNew() {
                 style={input}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
+                disabled={submitting}
               />
             </div>
             <div style={fieldWrap}>
@@ -101,6 +189,7 @@ export default function RequestNew() {
                 style={input}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
+                disabled={submitting}
               />
             </div>
           </div>
@@ -109,27 +198,36 @@ export default function RequestNew() {
         <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
           <button
             type="submit"
+            disabled={submitting}
             style={{
               padding: "10px 14px",
               borderRadius: 8,
               border: "1px solid #111827",
-              background: "#111827",
+              background: submitting ? "#6b7280" : "#111827",
               color: "white",
-              cursor: "pointer",
+              cursor: submitting ? "default" : "pointer",
+              opacity: submitting ? 0.7 : 1,
+              minWidth: 110,
+              textAlign: "center",
+              fontWeight: 500,
+              fontSize: 14,
             }}
           >
-            Submit (stub)
+            {submitting ? "Submitting..." : "Submit"}
           </button>
 
           <button
             type="button"
             onClick={() => nav(-1)}
+            disabled={submitting}
             style={{
               padding: "10px 14px",
               borderRadius: 8,
               border: "1px solid #e5e7eb",
               background: "#f9fafb",
               cursor: "pointer",
+              fontSize: 14,
+              fontWeight: 500,
             }}
           >
             Cancel

@@ -1,72 +1,211 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, Role, RequestStatus } = require('@prisma/client');
+
 const prisma = new PrismaClient();
 
 async function main() {
-  // Users
-  const [isa, managerAli, directorSara, admin] = await Promise.all([
+  // 1. Create / upsert users (no passwordHash for now)
+  const [employeeOne, managerAli, directorSara, adminUser] = await Promise.all([
     prisma.user.upsert({
-      where: { email: 'isa@ewa.local' },
-      update: {},
-      create: { email: 'isa@ewa.local', name: 'Isa', role: 'EMPLOYEE' },
+      where: { email: 'employee@demo.local' },
+      update: {
+        name: 'Employee One',
+        role: 'EMPLOYEE',
+        isActive: true,
+      },
+      create: {
+        email: 'employee@demo.local',
+        name: 'Employee One',
+        role: 'EMPLOYEE',
+        isActive: true,
+      },
     }),
     prisma.user.upsert({
-      where: { email: 'manager_ali@ewa.local' },
-      update: {},
-      create: { email: 'manager_ali@ewa.local', name: 'Manager Ali', role: 'MANAGER' },
+      where: { email: 'manager_ali@demo.local' },
+      update: {
+        name: 'Manager Ali',
+        role: 'MANAGER',
+        isActive: true,
+      },
+      create: {
+        email: 'manager_ali@demo.local',
+        name: 'Manager Ali',
+        role: 'MANAGER',
+        isActive: true,
+      },
     }),
     prisma.user.upsert({
-      where: { email: 'director_sara@ewa.local' },
-      update: {},
-      create: { email: 'director_sara@ewa.local', name: 'Director Sara', role: 'DIRECTOR' },
+      where: { email: 'director_sara@demo.local' },
+      update: {
+        name: 'Director Sara',
+        role: 'DIRECTOR',
+        isActive: true,
+      },
+      create: {
+        email: 'director_sara@demo.local',
+        name: 'Director Sara',
+        role: 'DIRECTOR',
+        isActive: true,
+      },
     }),
     prisma.user.upsert({
-      where: { email: 'admin@ewa.local' },
-      update: {},
-      create: { email: 'admin@ewa.local', name: 'Admin', role: 'ADMIN' },
+      where: { email: 'admin@demo.local' },
+      update: {
+        name: 'Admin User',
+        role: 'ADMIN',
+        isActive: true,
+      },
+      create: {
+        email: 'admin@demo.local',
+        name: 'Admin User',
+        role: 'ADMIN',
+        isActive: true,
+      },
     }),
   ]);
 
-  // Request Type + Steps
-  const leave = await prisma.requestType.upsert({
+  // 2. Make sure we have a RequestType (example: LEAVE)
+  const leaveType = await prisma.requestType.upsert({
     where: { key: 'LEAVE' },
     update: {},
-    create: { key: 'LEAVE', name: 'Leave Request' },
+    create: {
+      key: 'LEAVE',
+      name: 'Leave Request',
+    },
   });
 
-  const defs = [
+  // 3. Ensure approval steps for that type:
+  // order 1 -> MANAGER, order 2 -> DIRECTOR
+  const stepDefs = [
     { order: 1, requiredRole: 'MANAGER', name: 'Manager Review' },
     { order: 2, requiredRole: 'DIRECTOR', name: 'Director Review' },
   ];
-  for (const s of defs) {
+
+  for (const s of stepDefs) {
     await prisma.approvalStep.upsert({
-      where: { typeId_order: { typeId: leave.id, order: s.order } },
-      update: { name: s.name, requiredRole: s.requiredRole },
-      create: { typeId: leave.id, order: s.order, name: s.name, requiredRole: s.requiredRole },
+      where: {
+        // this works because schema.prisma has @@unique([typeId, order])
+        typeId_order: {
+          typeId: leaveType.id,
+          order: s.order,
+        },
+      },
+      update: {
+        name: s.name,
+        requiredRole: s.requiredRole,
+      },
+      create: {
+        typeId: leaveType.id,
+        order: s.order,
+        name: s.name,
+        requiredRole: s.requiredRole,
+      },
     });
   }
 
-  // Sample Request
-  const request = await prisma.request.create({
+  // 4. Create one sample request by the employee
+  const reqRecord = await prisma.request.create({
     data: {
-      typeId: leave.id,
+      typeId: leaveType.id,
       title: 'Annual Leave - 5 days',
-      payload: { from: '2025-10-20', to: '2025-10-24', reason: 'Family' },
-      requesterId: isa.id,
+      payload: {
+        from: '2025-10-20',
+        to: '2025-10-24',
+        reason: 'Family',
+      },
+      requesterId: employeeOne.id,
       status: 'PENDING',
-      history: { create: { step: 'Created', by: 'isa', comment: '' } },
+      isActive: true,
+      history: {
+        create: {
+          step: 'Created',
+          by: employeeOne.email,
+          role: 'EMPLOYEE',
+          comment: 'Initial submission',
+        },
+      },
     },
-    include: { type: { include: { steps: true } } },
+    include: {
+      type: {
+        include: {
+          steps: true,
+        },
+      },
+    },
   });
 
-  // Create pending approvals for each step
-  const orderedSteps = request.type.steps.sort((a, b) => a.order - b.order);
+  // 5. Create Approval rows for each step (approved = null for now)
+  const orderedSteps = reqRecord.type.steps.sort((a, b) => a.order - b.order);
+
   for (const st of orderedSteps) {
-    await prisma.approval.create({ data: { requestId: request.id, stepId: st.id } });
+    await prisma.approval.create({
+      data: {
+        requestId: reqRecord.id,
+        stepId: st.id,
+        // approverId will be filled when that stage actually acts
+        approved: null,
+        comment: null,
+        actedAt: null,
+      },
+    });
   }
 
-  console.log('Seed complete:', { requestId: request.id });
+  // 6. Create RequestAssignee records to control inbox visibility
+  // Manager is active now. Director and Admin are waiting.
+  await prisma.requestAssignee.createMany({
+    data: [
+      {
+        requestId: reqRecord.id,
+        userId: managerAli.id,
+        stage: 'MANAGER',
+        active: true, // manager should currently see it
+      },
+      {
+        requestId: reqRecord.id,
+        userId: directorSara.id,
+        stage: 'DIRECTOR',
+        active: false,
+      },
+      {
+        requestId: reqRecord.id,
+        userId: adminUser.id,
+        stage: 'ADMIN',
+        active: false,
+      },
+    ],
+  });
+
+  console.log('Seed complete ✅');
+  console.table([
+    {
+      role: 'EMPLOYEE',
+      email: employeeOne.email,
+      id: employeeOne.id,
+    },
+    {
+      role: 'MANAGER',
+      email: managerAli.email,
+      id: managerAli.id,
+    },
+    {
+      role: 'DIRECTOR',
+      email: directorSara.email,
+      id: directorSara.id,
+    },
+    {
+      role: 'ADMIN',
+      email: adminUser.email,
+      id: adminUser.id,
+    },
+  ]);
+
+  console.log('Example request id:', reqRecord.id);
 }
 
 main()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(async () => { await prisma.$disconnect(); });
+  .catch((e) => {
+    console.error('Seed error ❌', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

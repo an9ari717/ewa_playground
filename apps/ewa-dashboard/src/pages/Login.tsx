@@ -1,55 +1,85 @@
-import { useNavigate, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { auth } from "../auth/session";
+// src/pages/Login.tsx
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  useAuth,
+  deriveIdentityFromEmail,
+  ALLOWED_EMAILS,
+} from "../store/auth";
 
 export default function Login() {
   const nav = useNavigate();
-  const location = useLocation() as any;
-  const [email, setEmail] = useState("");
+  const setMe = useAuth((s) => s.set);
+  const hydrate = useAuth((s) => s.hydrate); // 🟢 ensure store picks it up immediately
 
-  // If already signed in, go straight to app
-  useEffect(() => {
-    const existing = auth.getEmail();
-    if (existing) {
-      nav("/app/dashboard", { replace: true });
+  const [email, setEmail] = useState("manager_ali@demo.local");
+  const [error, setError] = useState<string | null>(null);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const lower = email.toLowerCase().trim();
+
+    // ✅ Restrict to known demo users only
+    if (!ALLOWED_EMAILS.includes(lower)) {
+      setError("Unknown email. Use one of: " + ALLOWED_EMAILS.join(", "));
+      return;
     }
-  }, [nav]);
 
-  const handleContinue = () => {
-    const e = email.trim();
-    if (!e) return;
-    auth.setEmail(e);
+    const me = deriveIdentityFromEmail(lower);
+    setMe(me);   // writes to localStorage
+    hydrate();   // 🟢 immediately read it back into the store
+    setError(null);
 
-    // If we were sent here by RequireAuth, go back there; otherwise inbox
-    const to = location?.state?.from?.pathname ?? "/app/inbox";
-    nav(to, { replace: true });
-  };
+    // Optional: land managers directly in manager inbox for convenience
+    if (me.role === "MANAGER") nav("/app/manager/inbox");
+    else nav("/app/dashboard");
+  }
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
-      <div
-        style={{
-          width: 320,
-          padding: 24,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-        }}
-      >
-        <h1 style={{ marginBottom: 12 }}>EWA — Sign in</h1>
-        <input
-          placeholder="email@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleContinue()}
-          style={{ width: "100%", padding: 10, marginBottom: 12 }}
-        />
-        <button
-          onClick={handleContinue}
-          style={{ width: "100%", padding: 10, cursor: "pointer" }}
-        >
-          Continue
+    <div style={{ maxWidth: 420, margin: "80px auto" }}>
+      <h1 style={{ marginBottom: 12 }}>EWA Dashboard — Demo Login</h1>
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+        <label>
+          Email
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+            placeholder="manager_ali@demo.local"
+            required
+          />
+        </label>
+
+        {error && (
+          <div
+            style={{
+              background: "#fee2e2",
+              color: "#991b1b",
+              border: "1px solid #fecaca",
+              padding: "8px 12px",
+              borderRadius: 6,
+              fontSize: 14,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <button type="submit" style={{ padding: "10px 12px" }}>
+          Login
         </button>
-      </div>
+
+        <div style={{ fontSize: 12, color: "#555" }}>
+          Demo users:
+          <ul style={{ margin: "6px 0 0 18px" }}>
+            <li>manager_ali@demo.local</li>
+            <li>director_sara@demo.local</li>
+            <li>admin@demo.local</li>
+            <li>employee@demo.local</li>
+          </ul>
+        </div>
+      </form>
     </div>
   );
 }

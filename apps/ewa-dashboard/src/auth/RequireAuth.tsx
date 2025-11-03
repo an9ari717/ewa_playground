@@ -1,16 +1,16 @@
 // src/auth/RequireAuth.tsx
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { auth } from "./session";
+import { useAuth } from "../store/auth";
 
 export default function RequireAuth() {
-  const email = auth.getEmail();
+  const { me } = useAuth();
   const location = useLocation();
 
-  if (!email) {
-    // Not signed in → go to login and remember where they were going
+  // 🔹 If user not found in localStorage (no session), redirect to login
+  if (!me) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // Signed in → render the nested route under /app
+  // 🔹 Otherwise, allow access to protected routes
   return <Outlet />;
 }

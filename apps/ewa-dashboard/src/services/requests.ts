@@ -2,28 +2,49 @@
 import { api } from "../lib/api";
 import { z } from "zod";
 import { RequestZ, HistoryItemZ } from "../lib/dto";
-import { getUserEmail } from "../lib/session";
 
-// Accept backend response shape:
-// { page, pageSize, total, totalPages, data: [...] }
-// and normalize it to { items, page, pageSize, total }
+/**
+ * fetchRequests
+ * Translates UI params to backend query flags:
+ * - box === "my"       -> mine=true
+ * - box === "archive"  -> archived=true
+ * - box === "inbox"    -> (handled elsewhere via /inbox; here we just return active requests)
+ */
 export async function fetchRequests(params: {
   box: "inbox" | "my" | "archive";
-  role?: string;
+  role?: string;       // not used by this endpoint
   page?: number;
   pageSize?: number;
   status?: string;
 }) {
-  const { data } = await api.get("/requests", { params });
+  const { box, page = 1, pageSize = 10, status } = params;
 
-  // Prefer `data` field; fallback to `items` if backend changes later.
+  // Map UI "box" to API flags
+  const query: Record<string, any> = {
+    page,
+    pageSize,
+  };
+
+  if (status) query.status = status;
+
+  if (box === "my") {
+    query.mine = true;
+  } else if (box === "archive") {
+    query.archived = true;
+  }
+  // box === "inbox" is not handled by /requests; we use /inbox elsewhere.
+  // Here we’ll just fetch active requests visible to the caller (RLS), which is fine for Dashboard lists.
+
+  const { data } = await api.get("/requests", { params: query });
+
+  // backend may return { data: [...] } or { items: [...] }
   const rawItems: any[] = Array.isArray((data as any)?.data)
     ? (data as any).data
     : Array.isArray((data as any)?.items)
     ? (data as any).items
     : [];
 
-  // Map and normalize every request
+  // normalize each item so UI doesn't explode
   const items = rawItems.map((r: any) => ({
     id: String(r.id),
     title: r.title ?? "(untitled)",
@@ -35,81 +56,73 @@ export async function fetchRequests(params: {
     currentStage: r.currentStage ?? null,
     createdAt: r.createdAt ?? new Date().toISOString(),
     createdBy:
-      typeof r.createdBy === "object"
+      typeof r.requester === "object"
+        ? {
+            id: r.requester.id ?? "",
+            name: r.requester.name ?? r.requester.email ?? "—",
+          }
+        : typeof r.createdBy === "object"
         ? {
             id: r.createdBy.id ?? "",
             name: r.createdBy.name ?? r.createdBy.email ?? "—",
           }
-        : { id: r.createdById ?? "", name: r.by ?? r.requesterName ?? "—" },
+        : {
+            id: r.requesterId ?? r.createdById ?? "",
+            name: r.by ?? r.requesterName ?? "—",
+          },
   }));
 
-  // Return normalized structure
   return {
     items,
-    page: (data as any)?.page ?? params.page ?? 1,
-    pageSize: (data as any)?.pageSize ?? params.pageSize ?? 10,
+    page: (data as any)?.page ?? page,
+    pageSize: (data as any)?.pageSize ?? pageSize,
     total: (data as any)?.total ?? items.length,
   };
 }
 
+/** Single request */
+// src/services/requests.ts
 export async function fetchRequest(id: string) {
-  const { data } = await api.get(`/requests/${id}`);
+  // ✅ includeArchived so completed/archived requests can still be viewed
+  const { data } = await api.get(`/requests/${id}`, {
+    params: { includeArchived: true },
+  });
   return RequestZ.parse(data);
 }
 
+
+/** History */
 export async function fetchHistory(id: string) {
-  try {
-    const { data } = await api.get(`/requests/${id}/history`);
-    return z.array(HistoryItemZ).parse(data);
-  } catch (err: any) {
-    // If employee isn't allowed to see history yet, just return empty list
-    if (err?.response?.status === 403) return [];
-    throw err;
-  }
+  const { data } = await api.get(`/requests/${id}/history`);
+  return z.array(HistoryItemZ).parse(data);
 }
 
+/** Approve / Reject (keep as-is; backend returns a summary) */
 export async function mutateStatus(
   id: string,
   payload: { approved: boolean; comment?: string }
 ) {
   const { data } = await api.patch(`/requests/${id}/status`, payload);
-  return RequestZ.parse(data);
+  return data; // don't force-parse with RequestZ; backend returns summary object
 }
 
-/**
- * Create request — matches backend requirement:
- * { requesterEmail, typeKey, title, payload }
- */
+/** Create request */
 export async function createRequest(payload: {
   title: string;
-  type: string; // e.g., "LEAVE" | "PROCUREMENT" | "IT_SUPPORT"
-  details?: any; // optional free-form payload
+  type: string; // "LEAVE", "PROCUREMENT", "IT_SUPPORT"
+  details?: any;
 }) {
-  // ✅ Dynamically use logged-in user email if available
-  const requesterEmail =
-    getUserEmail() || "employee@demo.local"; // fallback for dev/demo
-
   const dto = {
-    requesterEmail,
-    typeKey: payload.type, // enum key from the dropdown
+    typeKey: payload.type,
     title: payload.title,
     payload: payload.details ?? {},
   };
 
+  const { data } = await api.post("/requests", dto);
+
   try {
-    const { data, status } = await api.post("/requests", dto);
-    console.log("[createRequest] success:", status, data);
-    try {
-      return RequestZ.parse(data);
-    } catch {
-      return data;
-    }
-  } catch (err: any) {
-    console.error(
-      "[createRequest] error:",
-      err?.response?.status,
-      err?.response?.data || err?.message
-    );
-    throw err;
+    return RequestZ.parse(data);
+  } catch {
+    return data;
   }
 }

@@ -8,11 +8,19 @@ export const UserZ = z.object({
   role: z.enum(["EMPLOYEE", "MANAGER", "DIRECTOR", "ADMIN"]),
 });
 
+// ✅ Extended to include IN_REVIEW and COMPLETED
 export const RequestZ = z.object({
   id: z.string(),
   title: z.string(),
   type: z.string(),
-  status: z.enum(["PENDING", "APPROVED", "REJECTED", "ARCHIVED"]),
+  status: z.enum([
+    "PENDING",
+    "IN_REVIEW",  // added
+    "APPROVED",
+    "REJECTED",
+    "COMPLETED",  // added
+    "ARCHIVED",
+  ]),
   currentStage: z.enum(["MANAGER", "DIRECTOR", "ADMIN"]).nullable(),
   createdAt: z.string(), // ISO date string
   createdBy: UserZ.pick({ id: true, name: true }),

@@ -3,24 +3,104 @@ generator client {
 }
 
 datasource db {
-  provider           = "postgresql"
-  url                = env("DATABASE_URL")          // pooled for runtime
-  directUrl          = env("DIRECT_URL")            // direct (no pgbouncer) for migrations
-  shadowDatabaseUrl  = env("SHADOW_DATABASE_URL")   // shadow schema for migrate
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String
-  role      Role       @default(EMPLOYEE)
-  isActive  Boolean    @default(true)
-  requests  Request[]  @relation("RequesterRequests")
-  approvals Approval[] @relation("ApproverApprovals")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String            @id @default(cuid())
+  email       String            @unique
+  name        String
+  role        Role              @default(EMPLOYEE)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  approvals   Approval[]        @relation("ApproverApprovals")
+  requests    Request[]         @relation("RequesterRequests")
   assignments RequestAssignee[] @relation("UserAssignments")
+}
+
+model RequestType {
+  id        String         @id @default(cuid())
+  key       String         @unique
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  steps     ApprovalStep[]
+  requests  Request[]      @relation("TypeRequests")
+}
+
+model Request {
+  id          String            @id @default(cuid())
+  typeId      String
+  title       String
+  payload     Json
+  status      RequestStatus     @default(PENDING)
+  requesterId String
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  approvals   Approval[]
+  history     HistoryEntry[]
+  requester   User              @relation("RequesterRequests", fields: [requesterId], references: [id])
+  type        RequestType       @relation("TypeRequests", fields: [typeId], references: [id])
+  assignees   RequestAssignee[] @relation("RequestAssignments")
+}
+
+model ApprovalStep {
+  id           String      @id @default(cuid())
+  typeId       String
+  order        Int
+  requiredRole Role
+  name         String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  approvals    Approval[]
+  type         RequestType @relation(fields: [typeId], references: [id])
+
+  @@unique([typeId, order])
+}
+
+model Approval {
+  id         String       @id @default(cuid())
+  requestId  String
+  stepId     String
+  approverId String?
+  approved   Boolean?
+  comment    String?
+  actedAt    DateTime?
+  createdAt  DateTime     @default(now())
+  approver   User?        @relation("ApproverApprovals", fields: [approverId], references: [id])
+  request    Request      @relation(fields: [requestId], references: [id])
+  step       ApprovalStep @relation(fields: [stepId], references: [id])
+}
+
+model HistoryEntry {
+  id        String   @id @default(cuid())
+  requestId String
+  step      String
+  by        String
+  role      Role?
+  comment   String?
+  date      DateTime @default(now())
+  request   Request  @relation(fields: [requestId], references: [id])
+}
+
+model RequestAssignee {
+  id        String  @id @default(cuid())
+  requestId String
+  userId    String
+  stage     Role
+  active    Boolean @default(true)
+  request   Request @relation("RequestAssignments", fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "RequestAssignee_request_fkey")
+  user      User    @relation("UserAssignments", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "RequestAssignee_user_fkey")
+
+  @@index([active])
+  @@index([requestId], map: "RequestAssignee_request_idx")
+  @@index([userId], map: "RequestAssignee_user_idx")
+  @@index([stage, active], map: "reqassign_stage_active")
+  @@index([stage, userId, active], map: "reqassign_stage_user_active")
 }
 
 enum Role {
@@ -28,33 +108,6 @@ enum Role {
   MANAGER
   DIRECTOR
   ADMIN
-}
-
-model RequestType {
-  id        String         @id @default(cuid())
-  key       String         @unique // e.g., "LEAVE", "PROCUREMENT"
-  name      String
-  steps     ApprovalStep[]
-  requests  Request[]      @relation("TypeRequests") // 👈 add this line
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-}
-
-model Request {
-  id          String         @id @default(cuid())
-  typeId      String
-  type        RequestType    @relation("TypeRequests", fields: [typeId], references: [id]) // 👈 add relation name
-  title       String
-  payload     Json
-  status      RequestStatus  @default(PENDING)
-  requesterId String
-  requester   User           @relation("RequesterRequests", fields: [requesterId], references: [id])
-  approvals   Approval[]
-  history     HistoryEntry[]
-  isActive    Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  assignees   RequestAssignee[] @relation("RequestAssignments")
 }
 
 enum RequestStatus {
@@ -65,57 +118,3 @@ enum RequestStatus {
   CANCELLED
   COMPLETED
 }
-
-model ApprovalStep {
-  id           String      @id @default(cuid())
-  typeId       String
-  type         RequestType @relation(fields: [typeId], references: [id])
-  order        Int
-  requiredRole Role
-  name         String // e.g., "Manager Review"
-  approvals    Approval[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-
-  @@unique([typeId, order])
-}
-
-model Approval {
-  id         String       @id @default(cuid())
-  requestId  String
-  request    Request      @relation(fields: [requestId], references: [id])
-  stepId     String
-  step       ApprovalStep @relation(fields: [stepId], references: [id])
-  approverId String?
-  approver   User?        @relation("ApproverApprovals", fields: [approverId], references: [id])
-  approved   Boolean?
-  comment    String?
-  actedAt    DateTime?
-  createdAt  DateTime     @default(now())
-}
-
-model HistoryEntry {
-  id        String   @id @default(cuid())
-  requestId String
-  request   Request  @relation(fields: [requestId], references: [id])
-  step      String
-  by        String // username/email/actor label
-  role      Role?
-  comment   String?
-  date      DateTime @default(now())
-}
-
-model RequestAssignee {
-  id        String  @id @default(cuid())
-  requestId String
-  userId    String
-  stage     Role
-  active    Boolean @default(true)
-
-  request   Request @relation("RequestAssignments", fields: [requestId], references: [id], onDelete: Cascade)
-  user      User    @relation("UserAssignments",   fields: [userId],    references: [id], onDelete: Cascade)
-
-  @@index([stage, active])
-  @@index([stage, userId, active])
-}
-
