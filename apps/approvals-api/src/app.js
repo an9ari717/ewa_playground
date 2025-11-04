@@ -6,27 +6,41 @@ const pinoHttp = require('pino-http');
 const pino = require('pino');
 const { PrismaClient } = require('@prisma/client');
 const { withAccelerate } = require('@prisma/extension-accelerate');
+
 const { actor } = require('./middleware/actor');
 const { requireRole } = require('./middleware/perm'); // not importing requireOwnerOrRole
 
-// mount the lightweight request-details router (stub OK)
+// Routers
 const requestDetailsRouter = require('./routes/request-details');
+const authRouter = require('./routes/auth'); // << NEW: /auth routes (check-access-code, signup, login, me)
 
 const app = express();
 const prisma = new PrismaClient({
   datasourceUrl: process.env.PRISMA_ACCELERATE_URL,
 }).$extends(withAccelerate());
+
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
+// ---------- Core middleware ----------
 app.use(pinoHttp({ logger }));
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// Attach req.actor from headers/query (?by=<email>)
+// Attach commonly used objects to req so routers can use them
+app.use((req, _res, next) => {
+  req.db = prisma;           // << NEW: share Prisma with routers
+  req.log = req.log || logger;
+  next();
+});
+
+// ---------- Auth routes (public endpoints first) ----------
+app.use('/auth', authRouter); // << NEW: mounts /auth/check-access-code, /auth/signup, /auth/login, /auth/me
+
+// Attach req.actor from headers/query (?by=<email>) AFTER public /auth routes
 app.use(actor);
 
-// mount router
+// ---------- Feature routers ----------
 app.use('/api/request-details', requestDetailsRouter);
 
 /**
@@ -513,6 +527,5 @@ app.get('/requests', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 
 module.exports = { app, logger };
