@@ -2,75 +2,132 @@
 import { api } from "../lib/api";
 import { z } from "zod";
 import { RequestZ, HistoryItemZ } from "../lib/dto";
+import { getUserEmail } from "../lib/session";
 
 /**
  * fetchRequests
- * Translates UI params to backend query flags:
- * - box === "my"       -> mine=true
- * - box === "archive"  -> archived=true
- * - box === "inbox"    -> (handled elsewhere via /inbox; here we just return active requests)
+ * - inbox    -> GET /inbox?role=...&userId=... (or by=email fallback)
+ * - my       -> GET /requests?mine=true
+ * - archive  -> GET /requests?archived=true
  */
 export async function fetchRequests(params: {
   box: "inbox" | "my" | "archive";
-  role?: string;       // not used by this endpoint
+  role?: string;
+  userId?: string;
   page?: number;
   pageSize?: number;
   status?: string;
 }) {
-  const { box, page = 1, pageSize = 10, status } = params;
+  const { box, role, userId, page = 1, pageSize = 10, status } = params;
 
-  // Map UI "box" to API flags
   const query: Record<string, any> = {
     page,
     pageSize,
+    _ts: Date.now(), // cache buster
   };
-
   if (status) query.status = status;
+
+  let endpoint = "/requests";
 
   if (box === "my") {
     query.mine = true;
-  } else if (box === "archive") {
+  }
+
+  if (box === "archive") {
     query.archived = true;
   }
-  // box === "inbox" is not handled by /requests; we use /inbox elsewhere.
-  // Here we’ll just fetch active requests visible to the caller (RLS), which is fine for Dashboard lists.
 
-  const { data } = await api.get("/requests", { params: query });
+  if (box === "inbox") {
+    endpoint = "/inbox";
+    if (role) query.role = role;
 
-  // backend may return { data: [...] } or { items: [...] }
+    // Prefer userId if provided; otherwise fall back to current user's email
+    if (userId) {
+      query.userId = userId;
+    } else {
+      const email = getUserEmail();
+      if (email) query.by = email;
+    }
+  }
+
+  const { data } = await api.get(endpoint, { params: query });
+
+  // Accept {data:[...]}, {items:[...]}, or a raw array [...]
   const rawItems: any[] = Array.isArray((data as any)?.data)
     ? (data as any).data
     : Array.isArray((data as any)?.items)
     ? (data as any).items
+    : Array.isArray(data)
+    ? (data as any)
     : [];
 
-  // normalize each item so UI doesn't explode
-  const items = rawItems.map((r: any) => ({
-    id: String(r.id),
-    title: r.title ?? "(untitled)",
-    type:
-      typeof r.type === "object"
-        ? r.type.name ?? r.type.title ?? r.type.id ?? "-"
-        : r.type ?? r.typeId ?? "-",
-    status: r.status ?? "PENDING",
-    currentStage: r.currentStage ?? null,
-    createdAt: r.createdAt ?? new Date().toISOString(),
-    createdBy:
-      typeof r.requester === "object"
-        ? {
-            id: r.requester.id ?? "",
-            name: r.requester.name ?? r.requester.email ?? "—",
-          }
-        : typeof r.createdBy === "object"
-        ? {
-            id: r.createdBy.id ?? "",
-            name: r.createdBy.name ?? r.createdBy.email ?? "—",
-          }
-        : {
-            id: r.requesterId ?? r.createdById ?? "",
-            name: r.by ?? r.requesterName ?? "—",
-          },
-  }));
+  // Normalize: expose start/end dates & reason for tables and details
+  const items = rawItems.map((r: any) => {
+    const p =
+      r?.payload && typeof r.payload === "object"
+        ? r.payload
+        : r?.details && typeof r.details === "object"
+        ? r.details
+        : ({} as Record<string, any>);
+
+    const start =
+      p.from ??
+      p.start ??
+      p.startDate ??
+      r.start ??
+      r.startDate ??
+      null;
+
+    const end =
+      p.to ??
+      p.end ??
+      p.endDate ??
+      r.end ??
+      r.endDate ??
+      null;
+
+    const reason = r.title ?? p.reason ?? p.details ?? "";
+
+    return {
+      id: String(r.id),
+      title: r.title ?? "(untitled)",
+      type:
+        typeof r.type === "object"
+          ? r.type.name ?? r.type.title ?? r.type.id ?? "-"
+          : r.type ?? r.typeId ?? "-",
+      status: r.status ?? "PENDING",
+      currentStage: r.currentStage ?? null,
+
+      // "Received"
+      createdAt: r.createdAt ?? new Date().toISOString(),
+
+      // "From" (person)
+      createdBy:
+        typeof r.requester === "object"
+          ? {
+              id: r.requester.id ?? "",
+              name: r.requester.name ?? r.requester.email ?? "—",
+            }
+          : typeof r.createdBy === "object"
+          ? {
+              id: r.createdBy.id ?? "",
+              name: r.createdBy.name ?? r.createdBy.email ?? "—",
+            }
+          : {
+              id: r.requesterId ?? r.createdById ?? "",
+              name: r.by ?? r.requesterName ?? "—",
+            },
+
+      // Date aliases so UI can reliably render
+      from: start,
+      to: end,
+      startDate: start,
+      endDate: end,
+
+      // "Reason / Title"
+      reason,
+    };
+  });
 
   return {
     items,
@@ -81,29 +138,28 @@ export async function fetchRequests(params: {
 }
 
 /** Single request */
-// src/services/requests.ts
 export async function fetchRequest(id: string) {
-  // ✅ includeArchived so completed/archived requests can still be viewed
   const { data } = await api.get(`/requests/${id}`, {
-    params: { includeArchived: true },
+    params: { includeArchived: true, _ts: Date.now() },
   });
   return RequestZ.parse(data);
 }
 
-
 /** History */
 export async function fetchHistory(id: string) {
-  const { data } = await api.get(`/requests/${id}/history`);
+  const { data } = await api.get(`/requests/${id}/history`, {
+    params: { _ts: Date.now() },
+  });
   return z.array(HistoryItemZ).parse(data);
 }
 
-/** Approve / Reject (keep as-is; backend returns a summary) */
+/** Approve / Reject */
 export async function mutateStatus(
   id: string,
   payload: { approved: boolean; comment?: string }
 ) {
   const { data } = await api.patch(`/requests/${id}/status`, payload);
-  return data; // don't force-parse with RequestZ; backend returns summary object
+  return data;
 }
 
 /** Create request */
@@ -111,11 +167,18 @@ export async function createRequest(payload: {
   title: string;
   type: string; // "LEAVE", "PROCUREMENT", "IT_SUPPORT"
   details?: any;
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
 }) {
+  const bodyPayload: any = {};
+  if (payload.details) bodyPayload.reason = payload.details;
+  if (payload.from) bodyPayload.from = payload.from;
+  if (payload.to) bodyPayload.to = payload.to;
+
   const dto = {
     typeKey: payload.type,
     title: payload.title,
-    payload: payload.details ?? {},
+    payload: bodyPayload,
   };
 
   const { data } = await api.post("/requests", dto);

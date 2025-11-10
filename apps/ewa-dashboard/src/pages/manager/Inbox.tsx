@@ -1,39 +1,46 @@
 // src/pages/manager/Inbox.tsx
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import PageHeader from "../../components/PageHeader";
-import Table from "../../components/Table";
+import Page from "../../components/layout/Page";
+import Card from "../../components/ui/Card";
 import Button from "../../components/Button";
 import { useRequests } from "../../hooks/useRequests";
-import StatusBadge from "../../components/requests/StatusBadge";
+import RequestCard from "../../components/requests/RequestCard";
 
-type Row = {
+type Item = {
   id: string;
-  requestNo: string;
   type: string;
-  title: string;
-  submittedBy: string;
-  submittedAt: string; // ISO
-  status: string;
+  title?: string;
+  createdAt: string; // ISO
+  status: "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED";
+  createdBy?: { name?: string; email?: string } | null;
 };
 
-// re-use same date style everywhere
-function formatDateShort(iso: string) {
+function formatDate(iso?: string) {
+  if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
     year: "numeric",
+    month: "short",
+    day: "2-digit",
   });
+}
+
+function resolveTypeLabel(r: any): string {
+  if (typeof r?.type === "string" && r.type.trim()) return r.type;
+  const obj = typeof r?.type === "object" ? r.type : undefined;
+  const objLabel = obj?.name ?? obj?.title ?? obj?.key ?? obj?.id;
+  if (objLabel) return String(objLabel);
+  const other = r?.typeKey ?? r?.typeId ?? r?.typeName ?? r?.typeTitle;
+  return other ? String(other) : "—";
 }
 
 export default function ManagerInbox() {
   const nav = useNavigate();
-
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  // manager inbox = things waiting on MANAGER
+  // Waiting for MANAGER
   const { data, isLoading, isError, isFetching, refetch } = useRequests(
     "inbox",
     "MANAGER",
@@ -41,164 +48,96 @@ export default function ManagerInbox() {
     pageSize
   );
 
-  // normalize API response for table display
-  const rows: Row[] = useMemo(() => {
-    const items = data?.items ?? [];
-
-    return items.map((r: any, idx: number) => {
-      const friendlyId = r.id?.startsWith("REQ-")
-        ? r.id
-        : `REQ-${page}-${idx + 1}`;
-
-      return {
-        id: r.id,
-        requestNo: friendlyId,
-        type: r.type ?? "-",
-        title: r.title ?? "-",
-        submittedBy:
-          (r.createdBy && (r.createdBy.name || r.createdBy.email)) || "—",
-        submittedAt: r.createdAt ?? "",
-        status: r.status ?? "PENDING",
-      };
-    });
-  }, [data, page]);
-
-  const columns = [
-    {
-      key: "requestNo",
-      header: "Request #",
-      width: 120,
-      render: (r: Row) => (
-        <button
-          onClick={() => nav(`/app/requests/${r.id}`)}
-          style={{
-            textDecoration: "underline",
-            color: "#2563eb",
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          {r.requestNo}
-        </button>
-      ),
-    },
-    {
-      key: "type",
-      header: "Type",
-      width: 140,
-      render: (r: Row) => (
-        <span style={{ fontSize: 13 }}>{r.type}</span>
-      ),
-    },
-    {
-      key: "title",
-      header: "Reason / Title",
-      render: (r: Row) => (
-        <span
-          style={{
-            fontSize: 13,
-            color: "#4b5563",
-            display: "inline-block",
-            maxWidth: 260,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-          title={r.title}
-        >
-          {r.title}
-        </span>
-      ),
-    },
-    {
-      key: "submittedBy",
-      header: "From",
-      width: 160,
-      render: (r: Row) => (
-        <span style={{ fontSize: 12, color: "#111827" }}>
-          {r.submittedBy}
-        </span>
-      ),
-    },
-    {
-      key: "submittedAt",
-      header: "Received",
-      width: 140,
-      render: (r: Row) => (
-        <span style={{ fontSize: 12, color: "#6b7280" }}>
-          {r.submittedAt ? formatDateShort(r.submittedAt) : "-"}
-        </span>
-      ),
-    },
- {
-  key: "status",
-  header: "Status",
-  width: 140,
-  render: (r: Row) => (
-    <StatusBadge status={r.status as any} size="sm" />
-  ),
-},
-
-    {
-      key: "actions",
-      header: "",
-      width: 100,
-      render: (r: Row) => (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => {
-            nav(`/app/requests/${r.id}`);
-          }}
-        >
-          View / Act
-        </Button>
-      ),
-    },
-  ];
+  const items: Item[] = useMemo(() => {
+    const list = data?.items ?? [];
+    return list.map((r: any) => ({
+      id: r.id,
+      type: resolveTypeLabel(r),
+      title: r.title ?? r.reason ?? "",
+      createdAt: r.createdAt ?? "",
+      status: (r.status as Item["status"]) ?? "PENDING",
+      createdBy: r.createdBy ?? r.requester ?? null,
+    }));
+  }, [data]);
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div style={{ maxWidth: 980 }}>
-      <PageHeader
-        title="Manager — Inbox"
-        subtitle={
-          isFetching
-            ? "Refreshing…"
-            : "Requests waiting for your approval."
-        }
-      />
-
-      {isLoading ? (
-        <div>Loading…</div>
-      ) : isError ? (
-        <>
-          <div style={{ color: "crimson", marginBottom: 12 }}>
-            Failed to load.
+    <Page
+      title="Manager's Inbox"
+      right={
+        <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? "Refreshing…" : "Refresh"}
+        </Button>
+      }
+      maxWidth={1100}
+      leftOffset={60}
+    >
+      <Card title="Pending Requests" stickyHeader stickyTop={0}>
+        {/* Info bar */}
+        <div
+          style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#f9fafb",
+            fontSize: 13,
+            color: "#475569",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            {isFetching ? "Refreshing…" : "Requests waiting for your approval."}
           </div>
-          <Button size="sm" onClick={() => refetch()}>
-            Retry
-          </Button>
-        </>
-      ) : (
-        <>
-          <Table
-            columns={columns}
-            data={rows}
-            emptyText="Nothing pending for you."
-          />
+          <div style={{ color: "#6b7280" }}>
+            Total <strong>{total}</strong>
+          </div>
+        </div>
 
+        {/* List */}
+        <div style={{ padding: 12 }}>
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : isError ? (
+            <div>
+              <div className="mb-3 text-sm font-medium text-red-600">
+                Failed to load.
+              </div>
+              <Button size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-gray-600">Nothing pending for you.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {items.map((it) => (
+                <RequestCard
+                  key={it.id}
+                  id={it.id}
+                  title={it.title || it.id}
+                  type={it.type}
+                  createdAt={formatDate(it.createdAt)}
+                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
+                  status={it.status}
+                  onOpen={() => nav(`/app/requests/${it.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {!isLoading && !isError && items.length > 0 && (
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
-              marginTop: 12,
+              padding: "10px 12px",
+              borderTop: "1px solid #e5e7eb",
+              background: "#f8fafc",
             }}
           >
             <Button
@@ -208,23 +147,19 @@ export default function ManagerInbox() {
             >
               Prev
             </Button>
-
-            <span style={{ fontSize: 12 }}>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
               Page {page} / {totalPages} • Total {total}
             </span>
-
             <Button
               size="sm"
-              onClick={() =>
-                setPage((p) => Math.min(totalPages, p + 1))
-              }
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
               Next
             </Button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </Card>
+    </Page>
   );
 }

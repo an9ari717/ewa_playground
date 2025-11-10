@@ -14,6 +14,7 @@ import {
   createRequest,
 } from "../services/requests";
 import { useAuth } from "../store/auth";
+import { getUserEmail } from "../lib/session";
 
 // ---------- Lists (inbox / my / archive) ----------
 export function useRequests(
@@ -23,10 +24,38 @@ export function useRequests(
   pageSize = 10,
   status?: string
 ) {
+  const me = useAuth((s) => s.me);
+
+  // Determine who we are
+  const effectiveRole = (role ?? me?.role) || undefined;
+  const userId = me?.id || undefined;
+  const emailFallback = getUserEmail() || undefined;
+
+  // Enable if:
+  // - not inbox → always true
+  // - inbox → role + either userId or email
+  const enabled =
+    box === "inbox" ? !!effectiveRole && (!!userId || !!emailFallback) : true;
+
+  // Build query key safely (max 5 args per helper)
+  const identityKey = userId || emailFallback || "anon";
+
   return useQuery({
-    queryKey: qk.requests(box, role, page, pageSize, status),
-    queryFn: () => fetchRequests({ box, role, page, pageSize, status }),
+    queryKey: [
+      ...qk.requests(box, effectiveRole, page, pageSize, status),
+      identityKey, // append manually instead of passing to qk
+    ],
+    queryFn: () =>
+      fetchRequests({
+        box,
+        role: effectiveRole,
+        userId,
+        page,
+        pageSize,
+        status,
+      }),
     placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
@@ -51,13 +80,13 @@ export function useRequestHistory(id: string) {
 // ---------- Approve / Reject ----------
 export function useApproveReject(id: string) {
   const qc = useQueryClient();
-  const { me } = useAuth();
+  const me = useAuth((s) => s.me);
 
   return useMutation({
     mutationFn: async (payload: { approved: boolean; comment?: string }) => {
       if (!id) throw new Error("Missing request id");
 
-      // Fallback so backend recognizes the actor even if headers fail
+      // fallback identity in query param
       const by = me?.email ? `?by=${encodeURIComponent(me.email)}` : "";
 
       const { data } = await api.patch(`/requests/${id}/status${by}`, {
@@ -67,11 +96,11 @@ export function useApproveReject(id: string) {
       return data;
     },
     onSuccess: () => {
-      // Detail + history
+      // Invalidate detail + history
       qc.invalidateQueries({ queryKey: qk.request(id) });
       qc.invalidateQueries({ queryKey: qk.history(id) });
 
-      // 🔁 Broadly invalidate ALL request list queries (any box/role/page)
+      // Invalidate all lists (inbox/my/archive)
       qc.invalidateQueries({
         predicate: (q) =>
           Array.isArray(q.queryKey) && q.queryKey[0] === "requests",
@@ -84,10 +113,14 @@ export function useApproveReject(id: string) {
 export function useCreateRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { title: string; type: string; details?: any }) =>
-      createRequest(payload),
+    mutationFn: (payload: {
+      title: string;
+      type: string;
+      details?: any;
+      from?: string;
+      to?: string;
+    }) => createRequest(payload),
     onSuccess: () => {
-      // Broadly refresh lists after creating
       qc.invalidateQueries({
         predicate: (q) =>
           Array.isArray(q.queryKey) && q.queryKey[0] === "requests",

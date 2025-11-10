@@ -8,29 +8,41 @@ export const UserZ = z.object({
   role: z.enum(["EMPLOYEE", "MANAGER", "DIRECTOR", "ADMIN"]),
 });
 
-// ✅ Extended to include IN_REVIEW and COMPLETED
-export const RequestZ = z.object({
-  id: z.string(),
-  title: z.string(),
-  type: z.string(),
-  status: z.enum([
-    "PENDING",
-    "IN_REVIEW",  // added
-    "APPROVED",
-    "REJECTED",
-    "COMPLETED",  // added
-    "ARCHIVED",
-  ]),
-  currentStage: z.enum(["MANAGER", "DIRECTOR", "ADMIN"]).nullable(),
-  createdAt: z.string(), // ISO date string
-  createdBy: UserZ.pick({ id: true, name: true }),
-});
+// Keep extra fields like payload/from/to/details instead of stripping them
+export const RequestZ = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    type: z.string(),
+    status: z.enum([
+      "PENDING",
+      "IN_REVIEW",
+      "APPROVED",
+      "REJECTED",
+      "COMPLETED",
+      "ARCHIVED",
+    ]),
+    currentStage: z.enum(["MANAGER", "DIRECTOR", "ADMIN"]).nullable(),
+    createdAt: z.string(),
+
+    // include email in case UI reads it
+    createdBy: UserZ.pick({ id: true, name: true, email: true }).partial({ name: true }),
+
+    // Optional helpers that may come from API at top-level
+    startDate: z.string().optional().nullable(),
+    endDate: z.string().optional().nullable(),
+
+    // Flexible containers used by different endpoints
+    payload: z.record(z.string(), z.any()).optional(),
+    details: z.record(z.string(), z.any()).optional(),
+  })
+  .passthrough();
 
 export const HistoryItemZ = z.object({
   step: z.string(),
   by: z.string().nullable(),
   role: z.string().nullable(),
-  date: z.string(), // ISO date string
+  date: z.string(),
   comment: z.string().nullable(),
 });
 
@@ -42,7 +54,6 @@ export const PaginatedZ = <T extends z.ZodTypeAny>(item: T) =>
     total: z.number(),
   });
 
-// handy TS types
 export type User = z.infer<typeof UserZ>;
 export type RequestDTO = z.infer<typeof RequestZ>;
 export type HistoryItem = z.infer<typeof HistoryItemZ>;

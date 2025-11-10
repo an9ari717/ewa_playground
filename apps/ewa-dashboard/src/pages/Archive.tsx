@@ -1,18 +1,30 @@
 // src/pages/Archive.tsx
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import PageHeader from "../components/PageHeader";
-import Table from "../components/Table";
+import Page from "../components/layout/Page";
+import Card from "../components/ui/Card";
 import Button from "../components/Button";
 import { useRequests } from "../hooks/useRequests";
+import RequestCard from "../components/requests/RequestCard";
 
-type Row = {
+type Item = {
   id: string;
   type: string;
   title: string;
-  createdAt: string; // ISO
-  status: string;    // APPROVED | REJECTED | ARCHIVED | ...
+  createdAt: string;
+  status: "APPROVED" | "REJECTED" | "ARCHIVED" | "PENDING";
+  createdBy?: { name?: string; email?: string } | null;
 };
+
+function formatDate(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
 
 export default function Archive() {
   const nav = useNavigate();
@@ -26,82 +38,109 @@ export default function Archive() {
     pageSize
   );
 
-  const rows: Row[] = useMemo(() => {
-    const items = data?.items ?? [];
-    return items.map((r) => ({
+  const items: Item[] = useMemo(() => {
+    const list = data?.items ?? [];
+    return list.map((r: any) => ({
       id: r.id,
-      type: typeof (r as any).type === "object"
-        ? (r as any).type?.name ?? (r as any).type?.title ?? "-"
-        : (r as any).type ?? "-",
-      title: r.title,
-      createdAt: r.createdAt,
-      status: r.status,
+      type:
+        typeof r?.type === "object"
+          ? r.type?.name ?? r.type?.title ?? "-"
+          : r?.type ?? "-",
+      title: r.title ?? "-",
+      createdAt: r.createdAt ?? "",
+      status: (r.status as Item["status"]) ?? "ARCHIVED",
+      createdBy: r.createdBy ?? r.requester ?? null,
     }));
   }, [data]);
-
-  const columns = [
-    {
-      key: "id",
-      header: "ID",
-      width: 220,
-      render: (r: Row) => (
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            nav(`/app/requests/${r.id}`);
-          }}
-          style={{ textDecoration: "underline" }}
-        >
-          {r.id}
-        </a>
-      ),
-    },
-    { key: "type", header: "Type", width: 160 },
-    { key: "title", header: "Title" },
-    {
-      key: "createdAt",
-      header: "Created",
-      width: 200,
-      render: (r: Row) => new Date(r.createdAt).toLocaleString(),
-    },
-    { key: "status", header: "Final Status", width: 140 },
-    {
-      key: "actions",
-      header: "Actions",
-      width: 120,
-      render: (r: Row) => (
-        <Button size="sm" variant="ghost" onClick={() => nav(`/app/requests/${r.id}`)}>
-          View
-        </Button>
-      ),
-    },
-  ];
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div style={{ maxWidth: 980 }}>
-      <PageHeader
-        title="Archive"
-        subtitle={isFetching ? "Refreshing…" : "Completed and closed requests."}
-      />
-
-      {isLoading ? (
-        <div>Loading…</div>
-      ) : isError ? (
-        <div style={{ color: "crimson", marginBottom: 12 }}>
-          Failed to load. <button onClick={() => refetch()}>Retry</button>
+    <Page
+      title="Archive"
+      right={
+        <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? "Refreshing…" : "Refresh"}
+        </Button>
+      }
+      maxWidth={1100}
+      leftOffset={60}
+    >
+      <Card title="Completed and Closed Requests" stickyHeader stickyTop={0}>
+        {/* Info bar */}
+        <div
+          style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#f9fafb",
+            fontSize: 13,
+            color: "#475569",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            {isFetching
+              ? "Refreshing…"
+              : "All requests that have been completed and archived."}
+          </div>
+          <div style={{ color: "#6b7280" }}>
+            Total <strong>{total}</strong>
+          </div>
         </div>
-      ) : (
-        <>
-          <Table columns={columns} data={rows} emptyText="No archived items." />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-            <Button size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+
+        {/* List */}
+        <div style={{ padding: 12 }}>
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : isError ? (
+            <div style={{ color: "crimson", marginBottom: 12 }}>
+              Failed to load.{" "}
+              <Button size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-gray-600">No archived items.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {items.map((it) => (
+                <RequestCard
+                  key={it.id}
+                  id={it.id}
+                  title={it.title || it.id}
+                  type={it.type}
+                  createdAt={formatDate(it.createdAt)}
+                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
+                  status={it.status}
+                  onOpen={() => nav(`/app/requests/${it.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Pagination */}
+        {!isLoading && !isError && items.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              borderTop: "1px solid #e5e7eb",
+              background: "#f8fafc",
+            }}
+          >
+            <Button
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
               Prev
             </Button>
-            <span style={{ fontSize: 12 }}>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
               Page {page} / {totalPages} • Total {total}
             </span>
             <Button
@@ -112,8 +151,8 @@ export default function Archive() {
               Next
             </Button>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </Card>
+    </Page>
   );
 }

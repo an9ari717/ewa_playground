@@ -1,82 +1,61 @@
 // src/layouts/AppShell.tsx
-import React from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
-import { auth } from "../auth/session";
+import { logoutLocal } from "../services/auth";
+import Sidebar from "../components/Sidebar";
 
 export default function AppShell() {
   const nav = useNavigate();
-  const { me, set } = useAuth();
+  const storeMe = useAuth((s) => s.me);
+
+  let me = storeMe as any;
+  if (!me) {
+    try {
+      const raw = localStorage.getItem("ewa.user");
+      if (raw) me = JSON.parse(raw);
+    } catch {}
+  }
 
   const handleLogout = () => {
-    // clear both our local auth store and the legacy session helper
-    set(null);
-    auth.clear();
-
-    // go back to login
+    logoutLocal();
     nav("/login", { replace: true });
   };
 
-  const linkBase: React.CSSProperties = {
-    display: "block",
-    padding: "8px 10px",
-    borderRadius: 8,
-    textDecoration: "none",
-  };
-
-  // role helpers
-  const isEmployee = me?.role === "EMPLOYEE";
-  const isManagerLike =
-    me?.role === "MANAGER" || me?.role === "DIRECTOR" || me?.role === "ADMIN";
-
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Top bar */}
+    <div
+      className="min-h-screen bg-slate-50"
+      style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+    >
+      {/* Header */}
       <header
+        className="bg-white border-b px-4"
         style={{
           height: 56,
-          borderBottom: "1px solid #e5e7eb",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 16px",
+          borderBottom: "1px solid #e5e7eb",
           background: "#fff",
         }}
       >
         <div style={{ fontWeight: 600 }}>EWA Dashboard</div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {me ? (
             <>
-              <div style={{ textAlign: "right", lineHeight: 1.2 }}>
-                <div
-                  style={{
-                    color: "#111827",
-                    fontSize: 14,
-                    fontWeight: 500,
-                  }}
-                >
-                  {me.email}
-                </div>
-                <div
-                  style={{
-                    color: "#6b7280",
-                    fontSize: 12,
-                    fontWeight: 400,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {me.role}
+              <div style={{ lineHeight: 1.1, textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{me.email}</div>
+                <div style={{ fontSize: 11, color: "#6b7280" }}>
+                  {String(me.role || "").toUpperCase()}
                 </div>
               </div>
-
               <button
                 onClick={handleLogout}
+                className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200"
                 style={{
-                  padding: "6px 10px",
+                  padding: "8px 12px",
                   borderRadius: 8,
                   border: "1px solid #e5e7eb",
-                  background: "#f9fafb",
+                  background: "#f3f4f6",
                   cursor: "pointer",
                 }}
               >
@@ -87,125 +66,36 @@ export default function AppShell() {
         </div>
       </header>
 
-      <div style={{ flex: 1, display: "flex" }}>
-        {/* Sidebar */}
+      {/* Body */}
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        {/* Fixed sidebar column */}
         <aside
+          className="border-r bg-white"
           style={{
-            width: 240,
+            width: 272, // 17rem ~ w-68, a bit roomier than 64
+            flexShrink: 0,
             borderRight: "1px solid #e5e7eb",
-            padding: 16,
+            background: "#fff",
           }}
         >
-          <nav style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {/* Always visible */}
-            <NavLink
-              to="/app/dashboard"
-              style={({ isActive }) => ({
-                ...linkBase,
-                color: isActive ? "#111827" : "#1f2937",
-                background: isActive ? "#f3f4f6" : "transparent",
-                fontWeight: isActive ? 600 : 500,
-              })}
-            >
-              Dashboard
-            </NavLink>
-
-            <NavLink
-              to="/app/inbox"
-              style={({ isActive }) => ({
-                ...linkBase,
-                color: isActive ? "#111827" : "#1f2937",
-                background: isActive ? "#f3f4f6" : "transparent",
-                fontWeight: isActive ? 600 : 500,
-              })}
-            >
-              Inbox
-            </NavLink>
-
-            <NavLink
-              to="/app/archive"
-              style={({ isActive }) => ({
-                ...linkBase,
-                color: isActive ? "#111827" : "#1f2937",
-                background: isActive ? "#f3f4f6" : "transparent",
-                fontWeight: isActive ? 600 : 500,
-              })}
-            >
-              Archive
-            </NavLink>
-
-            <NavLink
-              to="/app/new-request"
-              style={({ isActive }) => ({
-                ...linkBase,
-                color: isActive ? "#111827" : "#1f2937",
-                background: isActive ? "#f3f4f6" : "transparent",
-                fontWeight: isActive ? 600 : 500,
-              })}
-            >
-              New Request
-            </NavLink>
-
-            {/* EMPLOYEE SECTION */}
-            {isEmployee && (
-              <>
-                <div style={{ height: 8 }} />
-                <small style={{ color: "#6b7280", paddingLeft: 2 }}>
-                  Employee
-                </small>
-
-                <NavLink
-                  to="/app/employee/request"
-                  style={({ isActive }) => ({
-                    ...linkBase,
-                    color: isActive ? "#111827" : "#1f2937",
-                    background: isActive ? "#f3f4f6" : "transparent",
-                    fontWeight: isActive ? 600 : 500,
-                  })}
-                >
-                  New
-                </NavLink>
-
-                <NavLink
-                  to="/app/employee/requests"
-                  style={({ isActive }) => ({
-                    ...linkBase,
-                    color: isActive ? "#111827" : "#1f2937",
-                    background: isActive ? "#f3f4f6" : "transparent",
-                    fontWeight: isActive ? 600 : 500,
-                  })}
-                >
-                  My Requests
-                </NavLink>
-              </>
-            )}
-
-            {/* MANAGER SECTION */}
-            {isManagerLike && (
-              <>
-                <div style={{ height: 8 }} />
-                <small style={{ color: "#6b7280", paddingLeft: 2 }}>
-                  Manager
-                </small>
-
-                <NavLink
-                  to="/app/manager/inbox"
-                  style={({ isActive }) => ({
-                    ...linkBase,
-                    color: isActive ? "#111827" : "#1f2937",
-                    background: isActive ? "#f3f4f6" : "transparent",
-                    fontWeight: isActive ? 600 : 500,
-                  })}
-                >
-                  Inbox
-                </NavLink>
-              </>
-            )}
-          </nav>
+          <Sidebar />
         </aside>
 
         {/* Main content */}
-        <main style={{ flex: 1, padding: 24 }}>
+        <main
+          className="p-6"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: 24,
+          }}
+        >
           <Outlet />
         </main>
       </div>

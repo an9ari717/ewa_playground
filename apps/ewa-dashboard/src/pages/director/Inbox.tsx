@@ -1,71 +1,165 @@
 // src/pages/director/Inbox.tsx
-import React from "react";
-import Table from "../../components/Table";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Page from "../../components/layout/Page";
+import Card from "../../components/ui/Card";
+import Button from "../../components/Button";
 import { useRequests } from "../../hooks/useRequests";
-import StatusBadge from "../../components/requests/StatusBadge";
-import { Link } from "react-router-dom";
+import RequestCard from "../../components/requests/RequestCard";
 
-type Row = {
-  req: React.ReactElement;
+type Item = {
+  id: string;
   type: string;
-  title: string;
-  from: string;
-  createdAt: string;
-  status: React.ReactElement;
+  title?: string;
+  createdAt: string; // ISO
+  status: "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED";
+  createdBy?: { name?: string; email?: string } | null;
 };
 
+function formatDate(iso?: string) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function resolveTypeLabel(r: any): string {
+  if (typeof r?.type === "string" && r.type.trim()) return r.type;
+  const obj = typeof r?.type === "object" ? r.type : undefined;
+  const objLabel = obj?.name ?? obj?.title ?? obj?.key ?? obj?.id;
+  if (objLabel) return String(objLabel);
+  const other = r?.typeKey ?? r?.typeId ?? r?.typeName ?? r?.typeTitle;
+  return other ? String(other) : "—";
+}
+
 export default function DirectorInbox() {
+  const nav = useNavigate();
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
 
-  // This page is for the Director inbox; keep it explicit.
-  // If you ever make a shared page, you can switch this back to me?.role.
-  const role = "DIRECTOR";
-
-  const { data, isLoading, isError } = useRequests("inbox", role);
-
-  const rows: Row[] =
-    data?.items?.map((r) => ({
-      req: (
-        <Link
-          to={`/app/requests/${r.id}`}
-          style={{ textDecoration: "underline", color: "#2563eb" }}
-        >
-          {r.id.slice(0, 8)}
-        </Link>
-      ),
-      type: r.type,
-      title: r.title,
-      from: r.createdBy?.name ?? "—",
-      createdAt: r.createdAt,
-      status: <StatusBadge status={r.status} />,
-    })) ?? [];
-
-  const columns = React.useMemo(
-    () => [
-      { key: "req", header: "Request #" },
-      { key: "type", header: "Type" },
-      { key: "title", header: "Reason / Title" },
-      { key: "from", header: "From" },
-      { key: "createdAt", header: "Received" },
-      { key: "status", header: "Status" },
-    ],
-    []
+  // Waiting for DIRECTOR
+  const { data, isLoading, isError, isFetching, refetch } = useRequests(
+    "inbox",
+    "DIRECTOR",
+    page,
+    pageSize
   );
 
+  const items: Item[] = useMemo(() => {
+    const list = data?.items ?? [];
+    return list.map((r: any) => ({
+      id: r.id,
+      type: resolveTypeLabel(r),
+      title: r.title ?? r.reason ?? "",
+      createdAt: r.createdAt ?? "",
+      status: (r.status as Item["status"]) ?? "PENDING",
+      createdBy: r.createdBy ?? r.requester ?? null,
+    }));
+  }, [data]);
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
   return (
-    <div>
-      <div style={{ marginBottom: 12 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700 }}>Director — Inbox</h2>
-        <p style={{ color: "#666" }}>Requests waiting for your approval.</p>
-      </div>
+    <Page
+      title="Director — Inbox"
+      right={
+        <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? "Refreshing…" : "Refresh"}
+        </Button>
+      }
+      maxWidth={1100}
+      leftOffset={60}
+    >
+      <Card title="Pending Requests" stickyHeader stickyTop={0}>
+        {/* Info bar */}
+        <div
+          style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid #e5e7eb",
+            background: "#f9fafb",
+            fontSize: 13,
+            color: "#475569",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            {isFetching ? "Refreshing…" : "Requests waiting for your approval."}
+          </div>
+          <div style={{ color: "#6b7280" }}>
+            Total <strong>{total}</strong>
+          </div>
+        </div>
 
-      {isLoading && <p>Loading…</p>}
-      {isError && <p style={{ color: "red" }}>Failed to load your inbox.</p>}
+        {/* List */}
+        <div style={{ padding: 12 }}>
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : isError ? (
+            <div>
+              <div className="mb-3 text-sm font-medium text-red-600">
+                Failed to load.
+              </div>
+              <Button size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-gray-600">Nothing pending for you.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {items.map((it) => (
+                <RequestCard
+                  key={it.id}
+                  id={it.id}
+                  title={it.title || it.id}
+                  type={it.type}
+                  createdAt={formatDate(it.createdAt)}
+                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
+                  status={it.status}
+                  onOpen={() => nav(`/app/requests/${it.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
-      {rows.length ? (
-        <Table<Row> columns={columns} data={rows} />
-      ) : (
-        !isLoading && <p>Nothing pending for you.</p>
-      )}
-    </div>
+        {/* Pagination */}
+        {!isLoading && !isError && items.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              borderTop: "1px solid #e5e7eb",
+              background: "#f8fafc",
+            }}
+          >
+            <Button
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Prev
+            </Button>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>
+              Page {page} / {totalPages} • Total {total}
+            </span>
+            <Button
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
+      </Card>
+    </Page>
   );
 }

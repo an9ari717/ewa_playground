@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import Button from "../components/Button";
 import { useCreateRequest } from "../hooks/useRequests";
+import { getUserEmail } from "../lib/session";
 
 export default function NewRequest() {
   const nav = useNavigate();
@@ -13,38 +14,51 @@ export default function NewRequest() {
   const [type, setType] = useState("LEAVE");
   const [details, setDetails] = useState("");
 
+  // NEW: date fields
+  const [startDate, setStartDate] = useState(""); // "YYYY-MM-DD"
+  const [endDate, setEndDate] = useState("");
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const payload = {
-      title: title.trim() || "(untitled)",
-      type,
-      details: details ? { note: details } : undefined,
-    };
 
-    console.log("[NewRequest] submitting →", payload);
-    mutate(payload, {
-      onSuccess: (created: any) => {
-        console.log("[NewRequest] created →", created);
+    // optional guard: keep A <= B if both provided
+    if (startDate && endDate && startDate > endDate) {
+      alert("Start date must be on or before End date.");
+      return;
+    }
 
-        // ✅ Redirect to My Requests after submit to avoid forbidden history
-        nav("/app/employee/requests");
-
-        // Optionally show a small alert for user feedback
-        alert("Request submitted successfully!");
-      },
-      onError: (err: any) => {
-        console.error(
-          "[NewRequest] submit failed:",
-          err?.response?.status,
-          err?.response?.data || err?.message
-        );
-      },
-    });
+    // we keep the mutate signature the same, but pass `from` & `to`
+    mutate(
+      {
+        title: title.trim() || "(untitled)",
+        type,
+        details: details.trim() || undefined,
+        // NEW:
+        from: startDate || undefined,
+        to: endDate || undefined,
+      } as any,
+      {
+        onSuccess: () => {
+          nav("/app/employee/requests");
+          alert("Request submitted successfully!");
+        },
+        onError: (err: any) => {
+          console.error(
+            "[NewRequest] submit failed:",
+            err?.response?.status,
+            err?.response?.data || err?.message
+          );
+        },
+      }
+    );
   }
 
   return (
     <div style={{ maxWidth: 720 }}>
-      <PageHeader title="New Request" subtitle="Submit a new service request." />
+      <PageHeader
+        title="New Request"
+        subtitle={`Submit a new service request${getUserEmail() ? ` as ${getUserEmail()}` : ""}.`}
+      />
 
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
         {/* Title */}
@@ -72,6 +86,36 @@ export default function NewRequest() {
           </select>
         </label>
 
+        {/* Dates (optional; used especially for LEAVE) */}
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "1fr 1fr",
+            alignItems: "end",
+          }}
+        >
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Start Date</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              style={{ padding: 8, borderRadius: 8, border: "1px solid #ddd" }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>End Date</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              style={{ padding: 8, borderRadius: 8, border: "1px solid #ddd" }}
+            />
+          </label>
+        </div>
+
         {/* Details */}
         <label style={{ display: "grid", gap: 6 }}>
           <span>Details (optional)</span>
@@ -88,7 +132,7 @@ export default function NewRequest() {
           />
         </label>
 
-        {/* Error Message */}
+        {/* Error */}
         {isError && (
           <div style={{ color: "crimson" }}>
             Failed to submit. Check console (F12) for details.
@@ -100,7 +144,7 @@ export default function NewRequest() {
           </div>
         )}
 
-        {/* Buttons */}
+        {/* Actions */}
         <div style={{ display: "flex", gap: 8 }}>
           <Button type="submit" variant="primary" disabled={isPending}>
             {isPending ? "Submitting…" : "Submit"}

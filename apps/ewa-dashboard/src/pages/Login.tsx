@@ -1,43 +1,64 @@
 // src/pages/Login.tsx
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  useAuth,
-  deriveIdentityFromEmail,
-  ALLOWED_EMAILS,
-} from "../store/auth";
+import React from "react";
+import { login } from "../services/auth";
+
+//type Role = "EMPLOYEE" | "MANAGER" | "DIRECTOR" | "ADMIN";
 
 export default function Login() {
-  const nav = useNavigate();
-  const setMe = useAuth((s) => s.set);
-  const hydrate = useAuth((s) => s.hydrate); // 🟢 ensure store picks it up immediately
+  const [email, setEmail] = React.useState("manager_ali@demo.local");
+  const [password, setPassword] = React.useState("manager123");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const [email, setEmail] = useState("manager_ali@demo.local");
-  const [error, setError] = useState<string | null>(null);
-
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const lower = email.toLowerCase().trim();
-
-    // ✅ Restrict to known demo users only
-    if (!ALLOWED_EMAILS.includes(lower)) {
-      setError("Unknown email. Use one of: " + ALLOWED_EMAILS.join(", "));
-      return;
-    }
-
-    const me = deriveIdentityFromEmail(lower);
-    setMe(me);   // writes to localStorage
-    hydrate();   // 🟢 immediately read it back into the store
     setError(null);
+    setLoading(true);
 
-    // Optional: land managers directly in manager inbox for convenience
-    if (me.role === "MANAGER") nav("/app/manager/inbox");
-    else nav("/app/dashboard");
+    try {
+      // 1) real backend login
+      const { token, user } = await login(email, password);
+
+      // 2) persist for our app
+      try {
+        localStorage.setItem("ewa.token", token);
+        localStorage.setItem(
+          "ewa.user",
+          JSON.stringify({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            name: user.name ?? null,
+            isActive: user.isActive ?? true,
+          })
+        );
+      } catch {
+        // ignore storage errors
+      }
+
+      // 3) hard-redirect so the store hydrates fresh & RequireAuth stays happy
+      const target =
+        user.role === "MANAGER"
+          ? "/app/manager/inbox"
+          : user.role === "DIRECTOR"
+          ? "/app/director/inbox"
+          : "/app/dashboard";
+      window.location.replace(target);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Login failed. Check your email/password.";
+      setError(String(msg));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div style={{ maxWidth: 420, margin: "80px auto" }}>
-      <h1 style={{ marginBottom: 12 }}>EWA Dashboard — Demo Login</h1>
+      <h1 style={{ marginBottom: 12 }}>EWA Dashboard — Login</h1>
+
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
         <label>
           Email
@@ -46,7 +67,20 @@ export default function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={{ width: "100%", padding: 8, marginTop: 6 }}
-            placeholder="manager_ali@demo.local"
+            placeholder="you@example.com"
+            required
+            autoFocus
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+            placeholder="••••••••"
             required
           />
         </label>
@@ -66,17 +100,21 @@ export default function Login() {
           </div>
         )}
 
-        <button type="submit" style={{ padding: "10px 12px" }}>
-          Login
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ padding: "10px 12px", width: "100%" }}
+        >
+          {loading ? "Signing in…" : "Login"}
         </button>
 
         <div style={{ fontSize: 12, color: "#555" }}>
-          Demo users:
+          Test accounts you seeded:
           <ul style={{ margin: "6px 0 0 18px" }}>
-            <li>manager_ali@demo.local</li>
-            <li>director_sara@demo.local</li>
-            <li>admin@demo.local</li>
-            <li>employee@demo.local</li>
+            <li>manager_ali@demo.local / manager123</li>
+            <li>director_sara@demo.local / director123</li>
+            <li>admin@demo.local / admin123</li>
+            <li>employee@demo.local / employee123</li>
           </ul>
         </div>
       </form>

@@ -2,124 +2,135 @@
 import { create } from "zustand";
 import { fetchMe } from "../services/auth";
 
+export type Role = "EMPLOYEE" | "MANAGER" | "DIRECTOR" | "ADMIN";
 export type Me = {
   id: string;
   email: string;
-  role: "EMPLOYEE" | "MANAGER" | "DIRECTOR" | "ADMIN";
+  role: Role;
+  isActive?: boolean;
+  name?: string | null;
 };
-
-export const DEMO_IDENTITIES: Record<string, { id: string; role: Me["role"] }> = {
-  "manager_ali@demo.local": { id: "cmh8y9clx0000vq98d1b3y6rc", role: "MANAGER" },
-  "manager@demo.local": { id: "cmh8y9clx0000vq98d1b3y6rc", role: "MANAGER" },
-  "director_sara@demo.local": { id: "cmh8y9d860001v9q8a03alni5", role: "DIRECTOR" },
-  "director@demo.local": { id: "cmh8y9d860001v9q8a03alni5", role: "DIRECTOR" },
-  "admin@demo.local": { id: "cmh8y9d8g0002v9q8tiklxpvn", role: "ADMIN" },
-  "employee@demo.local": { id: "cmh8y9d8g0003v9q8xu03k55p", role: "EMPLOYEE" },
-};
-
-export const ALLOWED_EMAILS = Object.keys(DEMO_IDENTITIES);
-
-function mapEmail(emailLower: string): { id: string; role: Me["role"] } {
-  return DEMO_IDENTITIES[emailLower] ?? DEMO_IDENTITIES["employee@demo.local"];
-}
-
-export function deriveIdentityFromEmail(email: string): Me {
-  const lower = email.toLowerCase().trim();
-  const base = mapEmail(lower);
-  return { id: base.id, email: lower, role: base.role };
-}
-
-function normalizeMe(raw: any): Me {
-  const lower =
-    typeof raw?.email === "string" ? raw.email.toLowerCase().trim() : "employee@demo.local";
-  const base = mapEmail(lower);
-  return {
-    id: typeof raw?.id === "string" ? raw.id : base.id,
-    email: lower,
-    role: base.role, // always derive role from email
-  };
-}
-
-// 🔴 NEW: read localStorage **synchronously** for first render
-function initialMe(): Me | null {
-  try {
-    const raw = localStorage.getItem("ewa.user");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const me = normalizeMe(parsed);
-    // rewrite to keep it clean/consistent
-    localStorage.setItem("ewa.user", JSON.stringify(me));
-    return me;
-  } catch {
-    return null;
-  }
-}
 
 type State = {
   me: Me | null;
-  loading: boolean; // kept for API parity but not used for refresh path now
+  token: string | null;
+  loading: boolean;
   error?: string;
-  hydrate: () => void;     // still available (no-op if already initialized)
-  bootstrap: () => Promise<void>; // optional remote /me
-  set: (me: Me | null) => void;
+
+  // core actions
+  set: (me: Me | null, token?: string | null) => void;
+  hydrate: () => void;
+  logout: () => void;
+
+  // soft verify token with backend /auth/me (never clears UI 'me' on failure)
+  bootstrap: () => Promise<void>;
+
+  // helpers
+  isAuthed: () => boolean;
+  isManager: () => boolean;
+  isDirector: () => boolean;
+  isAdmin: () => boolean;
 };
 
-export const useAuth = create<State>((set, _get) => ({
-  // ✅ me is ready on the first render — no race
-  me: initialMe(),
+function readLS(): { me: Me | null; token: string | null } {
+  try {
+    const rawUser = localStorage.getItem("ewa.user");
+    const rawTok = localStorage.getItem("ewa.token");
+    return {
+      me: rawUser ? (JSON.parse(rawUser) as Me) : null,
+      token: rawTok ?? null,
+    };
+  } catch {
+    return { me: null, token: null };
+  }
+}
+
+function writeLS(me: Me | null, token: string | null) {
+  try {
+    if (me) {
+      localStorage.setItem("ewa.user", JSON.stringify(me));
+    } else {
+      localStorage.removeItem("ewa.user");
+    }
+    if (token) {
+      localStorage.setItem("ewa.token", token);
+    } else {
+      localStorage.removeItem("ewa.token");
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export const useAuth = create<State>((set, get) => ({
+  me: readLS().me,
+  token: readLS().token,
   loading: false,
   error: undefined,
 
-  hydrate() {
-    // idempotent — ensures me stays normalized if something changed
-    const raw = localStorage.getItem("ewa.user");
-    if (raw) {
-      try {
-        const me = normalizeMe(JSON.parse(raw));
-        localStorage.setItem("ewa.user", JSON.stringify(me));
-        set({ me });
-      } catch {
-        /* ignore */
-      }
-    }
+  set: (me, token) => {
+    const nextToken =
+      typeof token === "undefined" ? get().token : token ?? null;
+    writeLS(me, nextToken);
+    set({ me, token: nextToken });
   },
 
-  // Optional: only used if you want to call /me somewhere
-  async bootstrap() {
+  hydrate: () => {
+    const { me, token } = readLS();
+    set({ me, token });
+  },
+
+  logout: () => {
+    writeLS(null, null);
+    set({ me: null, token: null });
+  },
+
+  /**
+   * Soft bootstrap:
+   * - If there's no token: keep current `me` (UI stays stable), just stop loading.
+   * - If token exists: try /auth/me
+   *    - success: update `me` and persist
+   *    - failure (401/timeout/etc): remove token ONLY, keep current `me`
+   *      so the sidebar does NOT disappear.
+   */
+  bootstrap: async () => {
     set({ loading: true, error: undefined });
     try {
-      const raw = localStorage.getItem("ewa.user");
-      if (raw) {
-        const me = normalizeMe(JSON.parse(raw));
-        localStorage.setItem("ewa.user", JSON.stringify(me));
-        set({ me, loading: false });
+      const { token } = readLS();
+      if (!token) {
+        set({ loading: false, error: undefined });
         return;
       }
-      const remote = await fetchMe().catch(() => null);
-      if (remote) {
-        const me = normalizeMe(remote);
-        localStorage.setItem("ewa.user", JSON.stringify(me));
-        set({ me, loading: false });
-      } else {
-        set({ me: null, loading: false });
+
+      try {
+        const remote = await fetchMe();
+        if (remote && remote.email && remote.role) {
+          writeLS(remote, token);
+          set({ me: remote, token, loading: false, error: undefined });
+        } else {
+          // unexpected shape; keep UI stable but drop token
+          writeLS(get().me, null);
+          set({ token: null, loading: false, error: undefined });
+        }
+      } catch (e: any) {
+        // token invalid/expired or network issue — drop token, keep `me`
+        writeLS(get().me, null);
+        set({
+          token: null,
+          loading: false,
+          error: e?.response?.status ? `HTTP ${e.response.status}` : undefined,
+        });
       }
     } catch (e: any) {
       set({
-        me: null,
         loading: false,
         error: e?.response?.status ? `HTTP ${e.response.status}` : "unknown error",
       });
     }
   },
 
-  set(me) {
-    if (me) {
-      const normalized = normalizeMe(me);
-      localStorage.setItem("ewa.user", JSON.stringify(normalized));
-      set({ me: normalized });
-    } else {
-      localStorage.removeItem("ewa.user");
-      set({ me: null });
-    }
-  },
+  isAuthed: () => !!get().me,
+  isManager: () => get().me?.role === "MANAGER",
+  isDirector: () => get().me?.role === "DIRECTOR",
+  isAdmin: () => get().me?.role === "ADMIN",
 }));
