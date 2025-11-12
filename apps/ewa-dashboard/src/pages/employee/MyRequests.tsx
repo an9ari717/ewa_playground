@@ -1,11 +1,12 @@
 // src/pages/employee/MyRequests.tsx
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Page from "../../components/layout/Page";
 import Card from "../../components/ui/Card";
 import Button from "../../components/Button";
 import { useRequests } from "../../hooks/useRequests";
 import RequestCard from "../../components/requests/RequestCard";
+import Loader from "../../components/Loader";
 
 type CardStatus = "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED";
 
@@ -61,6 +62,22 @@ function normalizeStatus(s: any): CardStatus {
 
 export default function MyRequests() {
   const nav = useNavigate();
+  const location = useLocation();
+
+  // success banner when returning from New Request
+  const [ok, setOk] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("submitted") === "1") {
+      setOk(true);
+      // Clean the URL (remove the query) so banner doesn't persist on refresh
+      const clean = location.pathname;
+      nav(clean, { replace: true });
+      // Auto-hide banner after a short delay
+      const t = setTimeout(() => setOk(false), 2200);
+      return () => clearTimeout(t);
+    }
+  }, [location.search, location.pathname, nav]);
 
   // pagination
   const [page, setPage] = useState(1);
@@ -76,7 +93,7 @@ export default function MyRequests() {
 
   // normalize for RequestCard
   const items: Item[] = useMemo(() => {
-    const list = data?.items ?? [];
+    const list = (data?.items ?? []) as any[];
     return list.map((r: any) => ({
       id: r.id,
       type: resolveTypeLabel(r),
@@ -95,7 +112,12 @@ export default function MyRequests() {
     <Page
       title="My Requests"
       right={
-        <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
           {isFetching ? "Refreshing…" : "Refresh"}
         </Button>
       }
@@ -103,43 +125,48 @@ export default function MyRequests() {
       leftOffset={60}
     >
       <Card title="Everything you have submitted" stickyHeader stickyTop={0}>
-        {/* Top info strip */}
-        <div
-          style={{
-            padding: "10px 12px",
-            borderBottom: "1px solid #e5e7eb",
-            background: "#f9fafb",
-            fontSize: 13,
-            color: "#475569",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>{isFetching ? "Refreshing…" : "Your latest requests."}</div>
-          <div style={{ color: "#6b7280" }}>
-            Total <strong>{total}</strong>
+        {/* Success banner (from create) */}
+        {ok && <div className="mr-banner mr-banner--ok">Request submitted successfully.</div>}
+
+        {/* Info bar */}
+        <div className="mr-infobar">
+          <div className="mr-infobar__left">
+            {isFetching ? "Refreshing…" : "Your latest requests."}
+          </div>
+          <div className="mr-infobar__right" aria-live="polite">
+            <span className="mr-chip">
+              <span className="mr-chip__dot" />
+              Total {total}
+            </span>
           </div>
         </div>
 
         {/* List */}
-        <div style={{ padding: 12 }}>
+        <div className="mr-body">
           {isLoading ? (
-            <div className="text-sm text-gray-600">Loading…</div>
+            <Loader fullHeight />
           ) : isError ? (
-            <div>
-              <div className="mb-3 text-sm font-medium text-red-600">
-                Failed to load.
-              </div>
+            <div className="mr-empty mr-empty--error">
+              <div className="mr-empty__title">Failed to load.</div>
               <Button size="sm" onClick={() => refetch()}>
                 Retry
               </Button>
             </div>
           ) : items.length === 0 ? (
-            <div className="text-sm text-gray-600">
-              You haven’t submitted anything yet.
+            <div className="mr-empty">
+              <div className="mr-empty__dot" />
+              <div className="mr-empty__text">You haven’t submitted anything yet.</div>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => nav("/app/employee/request")}
+                style={{ marginTop: 6 }}
+              >
+                Create a new request
+              </Button>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 12 }}>
+            <div className="mr-list">
               {items.map((it) => (
                 <RequestCard
                   key={it.id}
@@ -158,28 +185,21 @@ export default function MyRequests() {
 
         {/* Pagination */}
         {!isLoading && !isError && items.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 12px",
-              borderTop: "1px solid #e5e7eb",
-              background: "#f8fafc",
-            }}
-          >
+          <div className="mr-pager">
             <Button
               size="sm"
+              variant="ghost"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
               Prev
             </Button>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>
+            <span className="mr-pager__meta">
               Page {page} / {totalPages} • Total {total}
             </span>
             <Button
               size="sm"
+              variant="ghost"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
@@ -188,6 +208,84 @@ export default function MyRequests() {
           </div>
         )}
       </Card>
+
+      {/* local styles */}
+      <style>{`
+        .mr-banner {
+          margin: 8px 12px 0 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 700;
+          border: 1px solid;
+        }
+        .mr-banner--ok {
+          color: #166534; background: #ecfdf5; border-color: #bbf7d0;
+        }
+
+        .mr-infobar {
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          background: #f8fafc;
+          font-size: 13px;
+          color: #475569;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .mr-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 999px;
+          background: #fff;
+          font-weight: 700;
+          color: #0f172a;
+          letter-spacing: .02em;
+        }
+        .mr-chip__dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          background: #0ea5e9; /* cyan/sky accent */
+        }
+
+        .mr-body { padding: 12px; }
+        .mr-list { display: grid; gap: 12px; }
+
+        /* Empty states */
+        .mr-empty {
+          display: grid;
+          place-items: center;
+          gap: 8px;
+          padding: 32px 12px;
+          color: #6b7280;
+          font-size: 14px;
+        }
+        .mr-empty__dot {
+          width: 8px; height: 8px; border-radius: 999px; background: #e5e7eb;
+        }
+        .mr-empty__text { opacity: .9; }
+        .mr-empty--error .mr-empty__title {
+          margin-bottom: 12px;
+          color: #dc2626;
+          font-weight: 600;
+        }
+
+        /* Pager */
+        .mr-pager {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-top: 1px solid #e5e7eb;
+          background: #f8fafc;
+        }
+        .mr-pager__meta {
+          font-size: 12px;
+          color: #6b7280;
+        }
+      `}</style>
     </Page>
   );
 }

@@ -26,10 +26,16 @@ export function useRequests(
 ) {
   const me = useAuth((s) => s.me);
 
-  // Determine who we are
-  const effectiveRole = (role ?? me?.role) || undefined;
-  const userId = me?.id || undefined;
-  const emailFallback = getUserEmail() || undefined;
+  // ✅ LocalStorage fallback in case Zustand hasn't hydrated yet
+  let localMe: any;
+  try {
+    const raw = localStorage.getItem("ewa.user");
+    if (raw) localMe = JSON.parse(raw);
+  } catch {}
+
+  const effectiveRole = (role ?? me?.role ?? localMe?.role) || undefined;
+  const userId = me?.id ?? localMe?.id ?? undefined;
+  const emailFallback = getUserEmail() || localMe?.email || undefined;
 
   // Enable if:
   // - not inbox → always true

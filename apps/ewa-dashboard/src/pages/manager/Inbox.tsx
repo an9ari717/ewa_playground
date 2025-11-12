@@ -6,6 +6,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/Button";
 import { useRequests } from "../../hooks/useRequests";
 import RequestCard from "../../components/requests/RequestCard";
+import Loader from "../../components/Loader";
 
 type Item = {
   id: string;
@@ -67,7 +68,12 @@ export default function ManagerInbox() {
     <Page
       title="Manager's Inbox"
       right={
-        <Button size="sm" onClick={() => refetch()} disabled={isFetching}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
           {isFetching ? "Refreshing…" : "Refresh"}
         </Button>
       }
@@ -76,42 +82,36 @@ export default function ManagerInbox() {
     >
       <Card title="Pending Requests" stickyHeader stickyTop={0}>
         {/* Info bar */}
-        <div
-          style={{
-            padding: "10px 12px",
-            borderBottom: "1px solid #e5e7eb",
-            background: "#f9fafb",
-            fontSize: 13,
-            color: "#475569",
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
+        <div className="mi-infobar">
+          <div className="mi-infobar__left">
             {isFetching ? "Refreshing…" : "Requests waiting for your approval."}
           </div>
-          <div style={{ color: "#6b7280" }}>
-            Total <strong>{total}</strong>
+          <div className="mi-infobar__right" aria-live="polite">
+            <span className="mi-chip">
+              <span className="mi-chip__dot" />
+              Total {total}
+            </span>
           </div>
         </div>
 
         {/* List */}
-        <div style={{ padding: 12 }}>
+        <div className="mi-body">
           {isLoading ? (
-            <div className="text-sm text-gray-600">Loading…</div>
+            <Loader fullHeight />
           ) : isError ? (
-            <div>
-              <div className="mb-3 text-sm font-medium text-red-600">
-                Failed to load.
-              </div>
+            <div className="mi-empty mi-empty--error">
+              <div className="mi-empty__title">Failed to load.</div>
               <Button size="sm" onClick={() => refetch()}>
                 Retry
               </Button>
             </div>
           ) : items.length === 0 ? (
-            <div className="text-sm text-gray-600">Nothing pending for you.</div>
+            <div className="mi-empty">
+              <div className="mi-empty__dot" />
+              <div className="mi-empty__text">Nothing pending for you.</div>
+            </div>
           ) : (
-            <div style={{ display: "grid", gap: 12 }}>
+            <div className="mi-list">
               {items.map((it) => (
                 <RequestCard
                   key={it.id}
@@ -130,28 +130,21 @@ export default function ManagerInbox() {
 
         {/* Pagination */}
         {!isLoading && !isError && items.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 12px",
-              borderTop: "1px solid #e5e7eb",
-              background: "#f8fafc",
-            }}
-          >
+          <div className="mi-pager">
             <Button
               size="sm"
+              variant="ghost"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
               Prev
             </Button>
-            <span style={{ fontSize: 12, color: "#6b7280" }}>
+            <span className="mi-pager__meta">
               Page {page} / {totalPages} • Total {total}
             </span>
             <Button
               size="sm"
+              variant="ghost"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
@@ -160,6 +153,72 @@ export default function ManagerInbox() {
           </div>
         )}
       </Card>
+
+      {/* local styles */}
+      <style>{`
+        .mi-infobar {
+          padding: 10px 12px;
+          border-bottom: 1px solid #e5e7eb;
+          background: #f8fafc;
+          font-size: 13px;
+          color: #475569;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .mi-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 999px;
+          background: #fff;
+          font-weight: 700;
+          color: #0f172a;
+          letter-spacing: .02em;
+        }
+        .mi-chip__dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          background: #2563eb;
+        }
+
+        .mi-body { padding: 12px; }
+        .mi-list { display: grid; gap: 12px; }
+
+        /* Empty states */
+        .mi-empty {
+          display: grid;
+          place-items: center;
+          gap: 8px;
+          padding: 32px 12px;
+          color: #6b7280;
+          font-size: 14px;
+        }
+        .mi-empty__dot {
+          width: 8px; height: 8px; border-radius: 999px; background: #e5e7eb;
+        }
+        .mi-empty__text { opacity: .9; }
+        .mi-empty--error .mi-empty__title {
+          margin-bottom: 12px;
+          color: #dc2626;
+          font-weight: 600;
+        }
+
+        /* Pager */
+        .mi-pager {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 12px;
+          border-top: 1px solid #e5e7eb;
+          background: #f8fafc;
+        }
+        .mi-pager__meta {
+          font-size: 12px;
+          color: #6b7280;
+        }
+      `}</style>
     </Page>
   );
 }

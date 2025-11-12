@@ -23,7 +23,11 @@ import MyRequests from "./pages/employee/MyRequests";
 
 // Manager / Director
 import ManagerInbox from "./pages/manager/Inbox";
-import DirectorInbox from "./pages/director/Inbox"; // ✅ now active
+import DirectorInbox from "./pages/director/Inbox";
+
+// ✅ NEW: Manager/Director dashboards
+import ManagerDashboard from "./pages/manager/Dashboard";
+import DirectorDashboard from "./pages/director/Dashboard";
 
 const client = new QueryClient();
 
@@ -63,7 +67,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             {/* Protected */}
             <Route element={<RequireAuth />}>
               <Route path="/app" element={<AppShell />}>
-                {/* Default to dashboard */}
+                {/* Default to employee dashboard */}
                 <Route index element={<Dashboard />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="archive" element={<Archive />} />
@@ -73,9 +77,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 <Route path="employee/requests" element={<MyRequests />} />
 
                 {/* Manager */}
+                <Route path="manager/dashboard" element={<ManagerDashboard />} /> {/* ✅ NEW */}
                 <Route path="manager/inbox" element={<ManagerInbox />} />
 
-                {/* Director ✅ */}
+                {/* Director */}
+                <Route path="director/dashboard" element={<DirectorDashboard />} /> {/* ✅ NEW */}
                 <Route path="director/inbox" element={<DirectorInbox />} />
 
                 {/* Shared */}

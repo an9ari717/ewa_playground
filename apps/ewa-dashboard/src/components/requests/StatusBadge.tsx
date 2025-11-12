@@ -1,81 +1,65 @@
-// src/components/requests/StatusBadge.tsx
-import React from "react";
+//import React from "react";
 
-export type Size = "sm" | "md";
+type Status =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "IN_REVIEW"
+  | "ESCALATED"
+  | "DRAFT"
+  | "ARCHIVED"
+  | (string & {});
 
-// If you had a Status union type in here originally, keep it.
-// For safety we'll just accept string for now.
-export default function StatusBadge({
-  status,
-  size = "md",
-}: {
-  status: string | undefined | null;
-  size?: Size;
-}) {
-  // normalize value like "PENDING", "IN_REVIEW", "COMPLETED", "REJECTED"
-  const value = (status || "").toUpperCase();
+interface Props {
+  status: Status;
+  size?: "sm" | "md";
+}
 
-  // define a palette for known statuses
-  const palette: Record<
-    string,
-    { bg: string; text: string; label?: string }
-  > = {
-    PENDING: {
-      bg: "#fef3c7", // amber-100
-      text: "#92400e", // amber-800
-      label: "Pending",
-    },
-    IN_REVIEW: {
-      bg: "#e0f2fe", // light blue
-      text: "#075985", // blue-900
-      label: "In review",
-    },
-    COMPLETED: {
-      bg: "#d1fae5", // green-100
-      text: "#065f46", // green-800
-      label: "Completed",
-    },
-    APPROVED: {
-      bg: "#d1fae5",
-      text: "#065f46",
-      label: "Approved",
-    },
-    REJECTED: {
-      bg: "#fee2e2", // red-100
-      text: "#991b1b", // red-800
-      label: "Rejected",
-    },
-  };
+const COLORS: Record<string, { text: string; bg: string }> = {
+  APPROVED: { text: "#16a34a", bg: "#dcfce7" }, // ✅ Green text + light green bg
+  REJECTED: { text: "#dc2626", bg: "#fee2e2" },
+  PENDING: { text: "#ca8a04", bg: "#fef9c3" },
+  IN_REVIEW: { text: "#2563eb", bg: "#dbeafe" },
+  CANCELLED: { text: "#4b5563", bg: "#e5e7eb" },
+  ARCHIVED: { text: "#334155", bg: "#e2e8f0" },
+  DRAFT: { text: "#334155", bg: "#f1f5f9" },
+  ESCALATED: { text: "#7c3aed", bg: "#f3e8ff" },
+  DEFAULT: { text: "#111827", bg: "#f3f4f6" },
+};
 
-  // fallback style if we don't recognize the status
-  const fallback = {
-    bg: "#e5e7eb", // gray-200
-    text: "#374151", // gray-700
-    label: value || "Unknown",
-  };
-
-  const { bg, text, label } = palette[value] ?? fallback;
-
-  const padding = size === "sm" ? "2px 6px" : "4px 8px";
-  const fontSize = size === "sm" ? "11px" : "12px";
+export default function StatusBadge({ status, size = "md" }: Props) {
+  const key = String(status || "").toUpperCase();
+  const color = COLORS[key] || COLORS.DEFAULT;
+  const label = key === "COMPLETED" ? "APPROVED" : key;
 
   return (
     <span
       style={{
-        display: "inline-block",
-        backgroundColor: bg,
-        color: text,
-        borderRadius: 9999,
-        fontSize,
-        fontWeight: 500,
-        lineHeight: 1.2,
-        padding,
-        minWidth: 60,
-        textAlign: "center",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: size === "sm" ? "2px 8px" : "4px 10px",
+        borderRadius: 999,
+        fontWeight: 600,
+        letterSpacing: ".03em",
+        fontSize: size === "sm" ? 12 : 13,
         textTransform: "uppercase",
+        color: color.text,
+        background: color.bg,
       }}
     >
-      {label}
+      <span
+        aria-hidden
+        style={{
+          width: size === "sm" ? 6 : 8,
+          height: size === "sm" ? 6 : 8,
+          borderRadius: "50%",
+          background: color.text,
+          opacity: 0.9,
+        }}
+      />
+      <span>{label}</span>
     </span>
   );
 }
