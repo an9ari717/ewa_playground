@@ -1,136 +1,96 @@
 // src/hooks/useRequests.ts
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  keepPreviousData,
-} from "@tanstack/react-query";
-import { qk } from "../lib/queryKeys";
-import { api } from "../lib/api";
+import { useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../store/auth";
 import {
   fetchRequests,
   fetchRequest,
   fetchHistory,
-  createRequest,
+  mutateStatus,
+  type RequestsResult,
 } from "../services/requests";
-import { useAuth } from "../store/auth";
-import { getUserEmail } from "../lib/session";
 
-// ---------- Lists (inbox / my / archive) ----------
+/**
+ * Shared hook for:
+ * - "my"      → requests created by current user
+ * - "inbox"   → requests assigned TO current user via RequestAssignee
+ * - "archive" → completed / rejected / archived
+ *
+ * NOTE:
+ * 🔥 inbox is controlled by the BACKEND using req.actor + RequestAssignee
+ *    so we DO NOT send role or userId here anymore.
+ */
 export function useRequests(
   box: "inbox" | "my" | "archive",
-  role?: string,
+  _roleOverride?: string, // not needed anymore for filtering
   page = 1,
   pageSize = 10,
   status?: string
 ) {
   const me = useAuth((s) => s.me);
 
-  // ✅ LocalStorage fallback in case Zustand hasn't hydrated yet
-  let localMe: any;
-  try {
-    const raw = localStorage.getItem("ewa.user");
-    if (raw) localMe = JSON.parse(raw);
-  } catch {}
+  const { data, isLoading, isError, isFetching, refetch } =
+    useQuery<RequestsResult>({
+      queryKey: ["requests", box, me?.id, page, pageSize, status],
+      queryFn: () =>
+        fetchRequests({
+          box,
+          page,
+          pageSize,
+          status,
+        }),
+      enabled: !!me,
+      staleTime: 5_000,
+    });
 
-  const effectiveRole = (role ?? me?.role ?? localMe?.role) || undefined;
-  const userId = me?.id ?? localMe?.id ?? undefined;
-  const emailFallback = getUserEmail() || localMe?.email || undefined;
+  const items = useMemo(() => data?.items ?? [], [data]);
 
-  // Enable if:
-  // - not inbox → always true
-  // - inbox → role + either userId or email
-  const enabled =
-    box === "inbox" ? !!effectiveRole && (!!userId || !!emailFallback) : true;
-
-  // Build query key safely (max 5 args per helper)
-  const identityKey = userId || emailFallback || "anon";
-
-  return useQuery({
-    queryKey: [
-      ...qk.requests(box, effectiveRole, page, pageSize, status),
-      identityKey, // append manually instead of passing to qk
-    ],
-    queryFn: () =>
-      fetchRequests({
-        box,
-        role: effectiveRole,
-        userId,
-        page,
-        pageSize,
-        status,
-      }),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return {
+    data: data ?? { items: [], page, pageSize, total: 0 },
+    items,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  };
 }
 
-// ---------- Single request ----------
-export function useRequest(id: string) {
+/* ----------------------------------------------------
+ * RequestDetails helpers
+ * ---------------------------------------------------- */
+
+export function useRequest(id: string | undefined) {
   return useQuery({
-    queryKey: qk.request(id),
-    queryFn: () => fetchRequest(id),
+    queryKey: ["request", id],
     enabled: !!id,
+    queryFn: () => fetchRequest(id as string),
   });
 }
 
-// ---------- History ----------
-export function useRequestHistory(id: string) {
+export function useRequestHistory(id: string | undefined) {
   return useQuery({
-    queryKey: qk.history(id),
-    queryFn: () => fetchHistory(id),
+    queryKey: ["request-history", id],
     enabled: !!id,
+    queryFn: () => fetchHistory(id as string),
   });
 }
 
-// ---------- Approve / Reject ----------
-export function useApproveReject(id: string) {
+/**
+ * Approve / Reject mutation
+ */
+export function useApproveReject(id: string | undefined) {
   const qc = useQueryClient();
-  const me = useAuth((s) => s.me);
 
   return useMutation({
-    mutationFn: async (payload: { approved: boolean; comment?: string }) => {
+    mutationFn: (payload: { approved: boolean; comment?: string }) => {
       if (!id) throw new Error("Missing request id");
-
-      // fallback identity in query param
-      const by = me?.email ? `?by=${encodeURIComponent(me.email)}` : "";
-
-      const { data } = await api.patch(`/requests/${id}/status${by}`, {
-        approved: payload.approved,
-        comment: payload.comment ?? null,
-      });
-      return data;
+      return mutateStatus(id, payload);
     },
     onSuccess: () => {
-      // Invalidate detail + history
-      qc.invalidateQueries({ queryKey: qk.request(id) });
-      qc.invalidateQueries({ queryKey: qk.history(id) });
-
-      // Invalidate all lists (inbox/my/archive)
-      qc.invalidateQueries({
-        predicate: (q) =>
-          Array.isArray(q.queryKey) && q.queryKey[0] === "requests",
-      });
-    },
-  });
-}
-
-// ---------- Create request ----------
-export function useCreateRequest() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: {
-      title: string;
-      type: string;
-      details?: any;
-      from?: string;
-      to?: string;
-    }) => createRequest(payload),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        predicate: (q) =>
-          Array.isArray(q.queryKey) && q.queryKey[0] === "requests",
-      });
+      if (!id) return;
+      qc.invalidateQueries({ queryKey: ["request", id] });
+      qc.invalidateQueries({ queryKey: ["request-history", id] });
+      qc.invalidateQueries({ queryKey: ["requests"] });
     },
   });
 }

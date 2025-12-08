@@ -21,6 +21,10 @@ model User {
   emailVerifiedAt    DateTime?
   lastLoginAt        DateTime?
 
+  // Department relation (user belongs to one department)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,33 +34,48 @@ model User {
 
   @@index([role])
   @@index([isActive])
+  @@index([departmentId])
 }
 
 model RequestType {
-  id        String         @id @default(cuid())
-  key       String         @unique
-  name      String
+  id   String @id @default(cuid())
+  key  String @unique
+  name String
+
+  // NEW: short uppercase code like "IT", "HR", "FIN" (optional for safe backfill; we’ll enforce NOT NULL later)
+  code String? @unique
+
+  // NEW: link each request type to a department (optional for now, we’ll tighten later)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   steps     ApprovalStep[]
   requests  Request[]      @relation("TypeRequests")
+
+  @@index([departmentId])
 }
 
 model Request {
-  id          String            @id @default(cuid())
+  id          String        @id @default(cuid())
   typeId      String
   title       String
   payload     Json
-  status      RequestStatus     @default(PENDING)
+  status      RequestStatus @default(PENDING)
   requesterId String
-  isActive    Boolean           @default(true)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  approvals   Approval[]
-  history     HistoryEntry[]
-  requester   User              @relation("RequesterRequests", fields: [requesterId], references: [id])
-  type        RequestType       @relation("TypeRequests", fields: [typeId], references: [id])
-  assignees   RequestAssignee[] @relation("RequestAssignments")
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // NEW: human-friendly code shown in UI (e.g., IT-25-0007). Optional for safe backfill; we’ll enforce NOT NULL later.
+  publicCode String? @unique
+
+  approvals Approval[]
+  history   HistoryEntry[]
+  requester User        @relation("RequesterRequests", fields: [requesterId], references: [id])
+  type      RequestType @relation("TypeRequests", fields: [typeId], references: [id])
+  assignees RequestAssignee[] @relation("RequestAssignments")
 }
 
 model ApprovalStep {
@@ -114,11 +133,36 @@ model RequestAssignee {
   @@index([stage, userId, active], map: "reqassign_stage_user_active")
 }
 
+//
+// NEW: counter table used to generate per-type, per-year sequences
+// scope = `${TYPE}-${YY}` e.g., "IT-25", "HR-25"
+//
+model RequestCodeCounter {
+  scope String @id
+  last  Int    @default(0)
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users        User[]
+  requestTypes RequestType[]
+}
+
 enum Role {
   EMPLOYEE
   MANAGER
   DIRECTOR
   ADMIN
+
+  // New specialized roles
+  HR_OFFICER
+  IT_OFFICER
+  FINANCE_OFFICER
 }
 
 enum RequestStatus {

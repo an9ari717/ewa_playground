@@ -1,58 +1,82 @@
 // src/middleware/actor.js
-const { PrismaClient } = require('@prisma/client');
-const { withAccelerate } = require('@prisma/extension-accelerate');
+const { PrismaClient } = require("@prisma/client");
+const { withAccelerate } = require("@prisma/extension-accelerate");
 
-// Use the Accelerate URL so lookups work over HTTPS:443
+// Use Accelerate URL so lookups work over HTTPS:443
 const prisma = new PrismaClient({
   datasourceUrl: process.env.PRISMA_ACCELERATE_URL,
 }).$extends(withAccelerate());
 
 /**
- * Dev/testing actor resolver:
- * - Query:  ?by=<id|email|name>&role=<Role>
- * - Headers: x-actor-id, x-actor-role
- * Fallbacks if DB is unreachable: still attach an actor from query/header.
+ * Resolve req.actor from:
+ *  - x-user-id / x-user-email headers (sent by frontend)
+ *  - ?by=<id|email|name> (for tools like Thunder Client)
+ *
+ * Role ALWAYS comes from the DB user, never from headers.
  */
 async function actor(req, res, next) {
-  const rawId = req.query.by || req.header('x-actor-id') || null;
-  const rawRole = (req.query.role || req.header('x-actor-role') || '').toUpperCase().trim();
+  // What the frontend is actually sending now
+  const headerEmail = req.header("x-user-email") || null;
+  const headerId = req.header("x-user-id") || null;
 
-  // default/fallback actor (no DB)
+  // Also allow ?by=... and x-actor-id for dev/testing
+  const rawId =
+    req.query.by ||
+    headerId ||
+    req.header("x-actor-id") ||
+    headerEmail || // last resort: use email as key
+    null;
+
+  // Build a very safe fallback: never trust header role for permissions
   const fallback = {
     id: null,
-    email: rawId || null,
-    name: rawId || null,
-    role: rawRole || 'EMPLOYEE',
+    email: headerEmail || rawId || null,
+    name: headerEmail || rawId || null,
+    role: "EMPLOYEE", // default, **never** ADMIN here
     user: null,
   };
 
+  // If we truly have no identifier at all, just attach fallback
   if (!rawId) {
     req.actor = fallback;
     return next();
   }
 
   try {
-    // Try resolve from DB (best effort)
-    const user =
-      (await prisma.user.findUnique({ where: { id: rawId } })) ||
-      (await prisma.user.findUnique({ where: { email: rawId } })) ||
-      (await prisma.user.findFirst({ where: { name: rawId } }));
+    // Try to resolve from DB (authoritative source)
+    const where = [];
+
+    // If it looks like an email, search by email too
+    if (typeof rawId === "string" && rawId.includes("@")) {
+      where.push({ email: rawId });
+    }
+
+    // Always allow lookup by id
+    where.push({ id: rawId });
+
+    const user = await prisma.user.findFirst({
+      where: { OR: where },
+    });
 
     if (!user) {
-      req.actor = fallback; // unknown user, still proceed
+      // Unknown id/email → still proceed, but with safe fallback
+      req.actor = fallback;
       return next();
     }
 
+    // ✅ Authoritative actor, from DB only
     req.actor = {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role, // authoritative from DB
+      role: user.role,             // ROLE FROM DB, NOT HEADERS
+      departmentId: user.departmentId || null,
       user,
     };
+
     return next();
   } catch (err) {
-    // If Prisma can’t reach DB, don’t block the request
+    console.error("[actor middleware] failed to resolve user:", err);
     req.actor = fallback;
     return next();
   }

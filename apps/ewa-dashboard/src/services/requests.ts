@@ -2,57 +2,61 @@
 import { api } from "../lib/api";
 import { z } from "zod";
 import { RequestZ, HistoryItemZ } from "../lib/dto";
-import { getUserEmail } from "../lib/session";
+
+/** Normalized shape for list items */
+export type NormalizedRequestItem = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  currentStage?: string | null;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+  from?: string | null;
+  to?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  reason?: string;
+};
+
+/** Returned by fetchRequests */
+export type RequestsResult = {
+  items: NormalizedRequestItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
 
 /**
- * fetchRequests
- * - inbox    -> GET /inbox?role=...&userId=... (or by=email fallback)
- * - my       -> GET /requests?mine=true
- * - archive  -> GET /requests?archived=true
+ * Unified fetchRequests:
+ *
+ * Backend expects:
+ *   GET /requests?box=inbox|my|archive&page=..&pageSize=..
+ * and uses req.actor (JWT) to decide:
+ *   - inbox   -> RequestAssignee for that user
+ *   - my      -> requesterId = user
+ *   - archive -> completed/approved/rejected/etc.
  */
 export async function fetchRequests(params: {
   box: "inbox" | "my" | "archive";
-  role?: string;
-  userId?: string;
   page?: number;
   pageSize?: number;
   status?: string;
-}) {
-  const { box, role, userId, page = 1, pageSize = 10, status } = params;
+}): Promise<RequestsResult> {
+  const { box, page = 1, pageSize = 10, status } = params;
 
   const query: Record<string, any> = {
+    box, // 👈 tells backend which “box” logic to use
     page,
     pageSize,
     _ts: Date.now(), // cache buster
   };
   if (status) query.status = status;
 
-  let endpoint = "/requests";
+  // 🔥 always use /requests – no more /inbox endpoint on frontend
+  const { data } = await api.get("/requests", { params: query });
 
-  if (box === "my") {
-    query.mine = true;
-  }
-
-  if (box === "archive") {
-    query.archived = true;
-  }
-
-  if (box === "inbox") {
-    endpoint = "/inbox";
-    if (role) query.role = role;
-
-    // Prefer userId if provided; otherwise fall back to current user's email
-    if (userId) {
-      query.userId = userId;
-    } else {
-      const email = getUserEmail();
-      if (email) query.by = email;
-    }
-  }
-
-  const { data } = await api.get(endpoint, { params: query });
-
-  // Accept {data:[...]}, {items:[...]}, or a raw array [...]
+  // Accept {data:[...]}, {items:[...]}, or raw [...]
   const rawItems: any[] = Array.isArray((data as any)?.data)
     ? (data as any).data
     : Array.isArray((data as any)?.items)
@@ -61,8 +65,7 @@ export async function fetchRequests(params: {
     ? (data as any)
     : [];
 
-  // Normalize: expose start/end dates & reason for tables and details
-  const items = rawItems.map((r: any) => {
+  const items: NormalizedRequestItem[] = rawItems.map((r: any) => {
     const p =
       r?.payload && typeof r.payload === "object"
         ? r.payload
@@ -88,6 +91,22 @@ export async function fetchRequests(params: {
 
     const reason = r.title ?? p.reason ?? p.details ?? "";
 
+    const createdBy =
+      typeof r.requester === "object"
+        ? {
+            id: r.requester.id ?? "",
+            name: r.requester.name ?? r.requester.email ?? "—",
+          }
+        : typeof r.createdBy === "object"
+        ? {
+            id: r.createdBy.id ?? "",
+            name: r.createdBy.name ?? r.createdBy.email ?? "—",
+          }
+        : {
+            id: r.requesterId ?? r.createdById ?? "",
+            name: r.by ?? r.requesterName ?? "—",
+          };
+
     return {
       id: String(r.id),
       title: r.title ?? "(untitled)",
@@ -97,34 +116,12 @@ export async function fetchRequests(params: {
           : r.type ?? r.typeId ?? "-",
       status: r.status ?? "PENDING",
       currentStage: r.currentStage ?? null,
-
-      // "Received"
       createdAt: r.createdAt ?? new Date().toISOString(),
-
-      // "From" (person)
-      createdBy:
-        typeof r.requester === "object"
-          ? {
-              id: r.requester.id ?? "",
-              name: r.requester.name ?? r.requester.email ?? "—",
-            }
-          : typeof r.createdBy === "object"
-          ? {
-              id: r.createdBy.id ?? "",
-              name: r.createdBy.name ?? r.createdBy.email ?? "—",
-            }
-          : {
-              id: r.requesterId ?? r.createdById ?? "",
-              name: r.by ?? r.requesterName ?? "—",
-            },
-
-      // Date aliases so UI can reliably render
+      createdBy,
       from: start,
       to: end,
       startDate: start,
       endDate: end,
-
-      // "Reason / Title"
       reason,
     };
   });

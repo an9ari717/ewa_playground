@@ -1,12 +1,16 @@
 // src/pages/manager/Inbox.tsx
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+
 import Page from "../../components/layout/Page";
 import Card from "../../components/ui/Card";
 import Button from "../../components/Button";
-import { useRequests } from "../../hooks/useRequests";
 import RequestCard from "../../components/requests/RequestCard";
 import Loader from "../../components/Loader";
+import { useAuth } from "../../store/auth";
+import { fetchRequests } from "../../services/requests";
+import type { RequestsResult } from "../../services/requests";
 
 type Item = {
   id: string;
@@ -38,16 +42,27 @@ function resolveTypeLabel(r: any): string {
 
 export default function ManagerInbox() {
   const nav = useNavigate();
+  const me = useAuth((s) => s.me);
+
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  // Waiting for MANAGER
-  const { data, isLoading, isError, isFetching, refetch } = useRequests(
-    "inbox",
-    "MANAGER",
-    page,
-    pageSize
-  );
+  const {
+    data,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useQuery<RequestsResult, Error>({
+    queryKey: ["requests", "inbox", me?.id, page, pageSize],
+    queryFn: () =>
+      fetchRequests({
+        box: "inbox",
+        page,
+        pageSize,
+      }),
+    enabled: !!me,
+  });
 
   const items: Item[] = useMemo(() => {
     const list = data?.items ?? [];
@@ -64,9 +79,11 @@ export default function ManagerInbox() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  const title = "Manager’s Inbox";
+
   return (
     <Page
-      title="Manager's Inbox"
+      title={title}
       right={
         <Button
           size="sm"
@@ -186,7 +203,6 @@ export default function ManagerInbox() {
         .mi-body { padding: 12px; }
         .mi-list { display: grid; gap: 12px; }
 
-        /* Empty states */
         .mi-empty {
           display: grid;
           place-items: center;
@@ -205,7 +221,6 @@ export default function ManagerInbox() {
           font-weight: 600;
         }
 
-        /* Pager */
         .mi-pager {
           display: flex;
           align-items: center;

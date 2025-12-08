@@ -1,10 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* === Base Theme Variables === */
+/* Light is the default */
 :root {
-  --bg: #fafafa;
+  color-scheme: light;
+
+  --bg: #e5e7eb;          /* page background */
+  --bg-soft: #e2e8f0;     /* subtle hovers / soft areas */
+  --card: #ffffff;        /* cards, panels */
+  --sidebar-bg: #f9fafb;  /* sidebar background */
+  --border: #e2e8f0;      /* borders / dividers */
+  --text: #0f172a;        /* main text */
+  --muted: #6b7280;       /* secondary text */
+  --input-bg: #ffffff;    /* inputs, textareas, etc */
+}
+
+/* Explicit light theme – used when <html data-theme="light"> */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #e5e7eb;
+  --bg-soft: #e2e8f0;
   --card: #ffffff;
-  --border: #e5e7eb;
-  --text: #111827;
+  --sidebar-bg: #f9fafb;
+  --border: #e2e8f0;
+  --text: #0f172a;
   --muted: #6b7280;
+  --input-bg: #ffffff;
+}
+
+/* Dark mode overrides – driven by <html data-theme="dark"> */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #020617;          /* slate-950 */
+  --bg-soft: #020617;     /* slightly lifted areas use card/bg in layout */
+  --card: #020617;        /* cards/panels */
+  --sidebar-bg: #020617;  /* sidebar background (actual gradient in SidebarV2) */
+  --border: #1e293b;      /* slate-800-ish */
+  --text: #e5e7eb;        /* main text */
+  --muted: #9ca3af;       /* secondary text */
+  --input-bg: #020617;    /* dark inputs */
 }
 
 /* === Global Reset & Layout === */
@@ -31,22 +69,27 @@ button {
   font-family: inherit;
 }
 
+/* Buttons follow theme */
 button {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: var(--text);
 }
 
 button:hover {
-  background: #f3f4f6;
+  background: var(--bg-soft);
 }
 
+/* Inputs follow theme */
 input {
   border: 1px solid var(--border);
   border-radius: 6px;
   outline: none;
+  background: var(--input-bg);
+  color: var(--text);
 }
 
 input:focus {

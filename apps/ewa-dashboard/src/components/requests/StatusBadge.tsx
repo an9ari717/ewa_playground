@@ -1,4 +1,4 @@
-//import React from "react";
+// src/components/requests/StatusBadge.tsx
 
 type Status =
   | "PENDING"
@@ -17,21 +17,25 @@ interface Props {
 }
 
 const COLORS: Record<string, { text: string; bg: string }> = {
-  APPROVED: { text: "#16a34a", bg: "#dcfce7" }, // ✅ Green text + light green bg
-  REJECTED: { text: "#dc2626", bg: "#fee2e2" },
-  PENDING: { text: "#ca8a04", bg: "#fef9c3" },
-  IN_REVIEW: { text: "#2563eb", bg: "#dbeafe" },
-  CANCELLED: { text: "#4b5563", bg: "#e5e7eb" },
-  ARCHIVED: { text: "#334155", bg: "#e2e8f0" },
-  DRAFT: { text: "#334155", bg: "#f1f5f9" },
-  ESCALATED: { text: "#7c3aed", bg: "#f3e8ff" },
+  APPROVED: { text: "#15803d", bg: "#dcfce7" }, // green-700 on green-100
+  REJECTED: { text: "#b91c1c", bg: "#fee2e2" }, // red-700 on red-100
+  PENDING: { text: "#b45309", bg: "#fef3c7" },  // amber-700 on amber-100
+  IN_REVIEW: { text: "#1d4ed8", bg: "#dbeafe" }, // blue-700 on blue-100
+  CANCELLED: { text: "#4b5563", bg: "#e5e7eb" }, // gray
+  ARCHIVED: { text: "#475569", bg: "#e2e8f0" },  // slate
+  DRAFT: { text: "#475569", bg: "#f1f5f9" },     // softer slate
+  ESCALATED: { text: "#7c3aed", bg: "#f3e8ff" }, // purple
   DEFAULT: { text: "#111827", bg: "#f3f4f6" },
 };
 
 export default function StatusBadge({ status, size = "md" }: Props) {
-  const key = String(status || "").toUpperCase();
+  const rawKey = String(status || "").toUpperCase();
+
+  // COMPLETED should visually behave like APPROVED
+  const key = rawKey === "COMPLETED" ? "APPROVED" : rawKey;
+
   const color = COLORS[key] || COLORS.DEFAULT;
-  const label = key === "COMPLETED" ? "APPROVED" : key;
+  const label = key; // already mapped above
 
   return (
     <span
@@ -43,10 +47,11 @@ export default function StatusBadge({ status, size = "md" }: Props) {
         borderRadius: 999,
         fontWeight: 600,
         letterSpacing: ".03em",
-        fontSize: size === "sm" ? 12 : 13,
+        fontSize: size === "sm" ? 11 : 12,
         textTransform: "uppercase",
         color: color.text,
         background: color.bg,
+        border: "1px solid rgba(148,163,184,0.35)", // subtle border
       }}
     >
       <span
@@ -56,7 +61,7 @@ export default function StatusBadge({ status, size = "md" }: Props) {
           height: size === "sm" ? 6 : 8,
           borderRadius: "50%",
           background: color.text,
-          opacity: 0.9,
+          boxShadow: `0 0 0 2px ${color.bg}`, // soft halo
         }}
       />
       <span>{label}</span>

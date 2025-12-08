@@ -23,13 +23,16 @@ export default function Page({
 }: Props) {
   const page: React.CSSProperties = {
     minHeight: "100vh",
-    background: "#f8fafc",
+    background: "var(--bg)",          // ✅ theme-aware background
     padding: "24px 0 48px",
+    color: "var(--text)",             // ✅ text follows theme
   };
+
   const container: React.CSSProperties = {
     width: "100%",
     maxWidth,
-    marginLeft: typeof leftOffset === "number" ? `${leftOffset}px` : leftOffset,
+    marginLeft:
+      typeof leftOffset === "number" ? `${leftOffset}px` : leftOffset,
     padding: "0 24px",
   };
 
@@ -37,7 +40,12 @@ export default function Page({
     <div style={page}>
       <div style={container}>
         {title ? (
-          <SectionHeader title={title} onBack={onBack} right={right} stickyTop={stickyTop} />
+          <SectionHeader
+            title={title}
+            onBack={onBack}
+            right={right}
+            stickyTop={stickyTop}
+          />
         ) : null}
         {children}
       </div>

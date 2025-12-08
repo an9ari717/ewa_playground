@@ -1,6 +1,6 @@
 // src/pages/RequestDetails.tsx
 import { useParams, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../store/auth";
 import Button from "../components/Button";
 import StatusBadge from "../components/requests/StatusBadge";
@@ -10,7 +10,7 @@ import { KeyValueTable, Row } from "../components/ui/KeyValueTable";
 import { useRequest, useRequestHistory, useApproveReject } from "../hooks/useRequests";
 import Loader from "../components/Loader";
 
-/* helpers */
+/* -------------------- date helpers -------------------- */
 const dOk = (i?: string | null) => (i ? new Date(i) : null);
 const dFmt = (i?: string | null) => {
   const d = dOk(i);
@@ -35,28 +35,49 @@ const typeLabel = (r: any) =>
     ? r.type
     : r?.type?.name ?? r?.type?.title ?? r?.type?.key ?? r?.type?.id ?? "—";
 const payload = (r: any) => (r?.payload ?? r?.details ?? {}) as Record<string, any>;
-const shortId = (s?: string) => {
-  if (!s) return "";
-  return s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
-};
+const shortId = (s?: string) => (s ? (s.length > 14 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s) : "");
 
+/* -------------------- history helpers -------------------- */
+function roleNice(role?: string) {
+  const R = String(role || "").toUpperCase();
+  if (R === "EMPLOYEE") return "Employee";
+  if (R === "MANAGER") return "Manager";
+  if (R === "DIRECTOR") return "Director";
+  if (R === "ADMIN") return "Admin";
+  return role || "User";
+}
+function eventType(h: any): "submitted" | "approved" | "rejected" | "updated" {
+  const a = String(h?.action ?? h?.event ?? "").toUpperCase();
+  const apr = h?.approved;
+  if (a.includes("CREATE") || a === "SUBMITTED") return "submitted";
+  if (a.includes("APPROVE") || apr === true) return "approved";
+  if (a.includes("REJECT") || apr === false) return "rejected";
+  return "updated";
+}
+function eventLabel(h: any) {
+  const t = eventType(h);
+  const step = h?.step ? String(h.step) : undefined;
+  if (t === "submitted") return "Submitted";
+  if (t === "approved") return step ? `${step} • Approved` : "Approved";
+  if (t === "rejected") return step ? `${step} • Rejected` : "Rejected";
+  return step || (h?.action ?? h?.event ?? "Update");
+}
+function badgeColor(t: ReturnType<typeof eventType>) {
+  if (t === "approved") return { bg: "#ecfdf5", border: "#bbf7d0", text: "#166534" }; // green
+  if (t === "rejected") return { bg: "#fef2f2", border: "#fecaca", text: "#991b1b" }; // red
+  if (t === "submitted") return { bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" }; // blue
+  return { bg: "#f8fafc", border: "#e5e7eb", text: "#334155" }; // neutral
+}
+
+/* -------------------- main component -------------------- */
 export default function RequestDetails() {
   const { id = "" } = useParams();
   const nav = useNavigate();
-
   const { data: req, isLoading, isError, refetch } = useRequest(id);
   const { data: history } = useRequestHistory(id);
   const approveReject = useApproveReject(id);
   const me = useAuth((s) => s.me);
   const [comment, setComment] = useState("");
-
-  // which action is in-flight (for per-button spinner)
-  const [action, setAction] = useState<"approve" | "reject" | null>(null);
-
-  // Copy-to-clipboard UI state
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current); }, []);
 
   const backToInbox = () => {
     const role = (me as any)?.role;
@@ -82,14 +103,32 @@ export default function RequestDetails() {
       </div>
     );
 
-  if (!req)
-    return <div style={{ padding: 16, color: "#475569" }}>Not found.</div>;
+  if (!req) return <div style={{ padding: 16, color: "#475569" }}>Not found.</div>;
 
   const type = typeLabel(req);
   const rawStatus = (req as any)?.status as string | undefined;
   const normalizedStatus =
     (rawStatus || "").toUpperCase() === "COMPLETED" ? "APPROVED" : rawStatus;
-  const stage = String((req as any)?.currentStage ?? (req as any)?.stage ?? "—");
+
+  // 🔹 Stage label logic (this is the new bit)
+  const rawStage = (req as any)?.currentStage ?? (req as any)?.stage ?? null;
+  const isTerminal = ["APPROVED", "REJECTED", "ARCHIVED", "COMPLETED"].includes(
+    String(normalizedStatus || "").toUpperCase()
+  );
+
+  let stage: string;
+  if (isTerminal) {
+    stage = "Completed";
+  } else if (rawStage) {
+    const S = String(rawStage).toUpperCase();
+    if (S === "MANAGER") stage = "Manager Review";
+    else if (S === "DIRECTOR") stage = "Director Review";
+    else if (S === "ADMIN") stage = "Admin Review";
+    else stage = String(rawStage);
+  } else {
+    stage = "—";
+  }
+
   const createdAt = (req as any)?.createdAt as string | undefined;
   const submittedAt = createdAt;
   const by =
@@ -103,50 +142,29 @@ export default function RequestDetails() {
   const from = p.from ?? p.start ?? p.startDate ?? (req as any)?.startDate;
   const to = p.to ?? p.end ?? p.endDate ?? (req as any)?.endDate;
   const reason = p.reason ?? (req as any)?.title ?? p.details ?? "—";
-  const isApprover = ((me as any)?.role ?? "") !== "EMPLOYEE";
 
-  const handleCopyId = async () => {
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopied(true);
-      if (copyTimer.current) window.clearTimeout(copyTimer.current);
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
-    } catch {}
-  };
+  const isApprover = ((me as any)?.role ?? "") !== "EMPLOYEE";
+  const isActionable = isApprover && !isTerminal;
+
+  // Public, human-friendly code (fallback to short id)
+  const publicCode = (req as any)?.publicCode ?? (req as any)?.code ?? undefined;
+  const displayCode = publicCode || shortId(id);
 
   return (
-    <Page title={`Request ${shortId(id)}`} onBack={() => nav(-1)} maxWidth={1200} leftOffset={60}>
-      {/* Header strip */}
+    <Page title={`Request ${displayCode}`} onBack={() => nav(-1)} maxWidth={1200} leftOffset={60}>
+      {/* Header (type + status on the left; copy chip removed) */}
       <div className="rd-head">
         <div className="rd-head__left">
           {type && <span className="rd-type">{type}</span>}
           <StatusBadge status={normalizedStatus as any} />
         </div>
-
-        <div className="rd-head__right">
-          <div className="rd-idchip" title={id}>
-            <span className="rd-idtext">{shortId(id)}</span>
-            <button
-              type="button"
-              className="rd-idbtn"
-              onClick={handleCopyId}
-              aria-label="Copy Request ID"
-              title={copied ? "Copied!" : "Copy ID"}
-            >
-              {/* copy icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.6"/>
-                <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" strokeWidth="1.6"/>
-              </svg>
-            </button>
-            {copied && <span className="rd-copied">Copied</span>}
-          </div>
-        </div>
       </div>
 
+      {/* Summary */}
       <Card title="Summary" stickyHeader stickyTop={0} style={{ marginBottom: 18 }}>
         <KeyValueTable>
           <tbody>
+            <Row label="Code">{displayCode}</Row>
             <Row label="Stage">{stage}</Row>
             <Row label="Status">
               <StatusBadge status={normalizedStatus as any} />
@@ -162,61 +180,47 @@ export default function RequestDetails() {
         </KeyValueTable>
       </Card>
 
+      {/* History */}
       <Card title="History" stickyHeader stickyTop={0}>
-        <div style={{ padding: "10px 12px" }}>
-          {history?.length ? (
-            <KeyValueTable>
-              <tbody>
-                {(history ?? []).map((h: any, i: number) => (
-                  <tr key={i} className="kv-row">
-                    <th
-                      style={{
-                        width: 220,
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        background: "#f3f4f6",
-                        color: "#1f2937",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        borderBottom: "1px solid #e5e7eb",
-                      }}
-                    >
-                      {h.event ?? h.action ?? "Event"}
-                    </th>
-                    <td
-                      style={{
-                        padding: "10px 12px",
-                        fontSize: 14,
-                        color: "#334155",
-                        borderBottom: "1px solid #e5e7eb",
-                      }}
-                    >
-                      <div>
-                        {h.by ?? h.actor ?? "—"} •{" "}
-                        {dtFmt(h.date ?? h.at ?? h.createdAt)}
-                      </div>
-                      {h.note ? (
-                        <div
-                          style={{
-                            marginTop: 4,
-                            color: "#111827",
-                            fontSize: 15,
-                          }}
-                        >
-                          {h.note}
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </KeyValueTable>
+        <div className="tl">
+          {(history?.length ?? 0) > 0 ? (
+            (history ?? []).map((h: any, i: number) => {
+              const t = eventType(h);
+              const colors = badgeColor(t);
+              return (
+                <div key={i} className="tl-item">
+                  <div className="tl-dot" />
+                  <div className="tl-body">
+                    <div className="tl-row">
+                      <span
+                        className="tl-badge"
+                        style={{
+                          color: colors.text,
+                          background: colors.bg,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        {eventLabel(h)}
+                      </span>
+                      <span className="tl-when">{dtFmt(h.date ?? h.at ?? h.createdAt)}</span>
+                    </div>
+                    <div className="tl-sub">
+                      {(h?.by ?? h?.actor ?? h?.user?.name ?? h?.user?.email ?? "—") +
+                        " • " +
+                        roleNice(h?.role)}
+                    </div>
+                    {h.note ? <div className="tl-note">{h.note}</div> : null}
+                  </div>
+                </div>
+              );
+            })
           ) : (
             <div style={{ color: "#64748b", fontSize: 14 }}>No history yet.</div>
           )}
         </div>
 
-        {isApprover && (
+        {/* Decision (only for actionable requests) */}
+        {isActionable && (
           <>
             <div style={{ height: 1, background: "#e5e7eb" }} />
             <div className="rd-decision">
@@ -230,40 +234,28 @@ export default function RequestDetails() {
               <div className="rd-actions">
                 <Button
                   variant="primary"
-                  loading={approveReject.isPending && action === "approve"}
-                  disabled={approveReject.isPending}
-                  onClick={() => {
-                    setAction("approve");
+                  onClick={() =>
                     approveReject.mutate(
                       { approved: true, comment: comment || undefined },
-                      { onSuccess: backToInbox, onSettled: () => setAction(null) }
-                    );
-                  }}
+                      { onSuccess: backToInbox }
+                    )
+                  }
+                  disabled={approveReject.isPending}
                 >
-                  {approveReject.isPending && action === "approve" ? "Approving…" : "Approve"}
+                  {approveReject.isPending ? "Approving…" : "Approve"}
                 </Button>
 
                 <Button
                   variant="danger"
-                  loading={approveReject.isPending && action === "reject"}
-                  disabled={approveReject.isPending}
-                  onClick={() => {
-                    setAction("reject");
+                  onClick={() =>
                     approveReject.mutate(
                       { approved: false, comment: comment || undefined },
-                      { onSuccess: backToInbox, onSettled: () => setAction(null) }
-                    );
-                  }}
-                >
-                  {approveReject.isPending && action === "reject" ? "Rejecting…" : "Reject"}
-                </Button>
-
-                <Button
-                  variant="ghost"
+                      { onSuccess: backToInbox }
+                    )
+                  }
                   disabled={approveReject.isPending}
-                  onClick={() => nav(-1)}
                 >
-                  Back
+                  {approveReject.isPending ? "Submitting…" : "Reject"}
                 </Button>
               </div>
             </div>
@@ -274,11 +266,8 @@ export default function RequestDetails() {
       {/* Styles */}
       <style>{`
         .rd-head {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 8px 12px 0 12px;
-          margin-bottom: 6px;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 12px 0 12px; margin-bottom: 6px;
         }
         .rd-head__left { display: flex; align-items: center; gap: 10px; }
         .rd-type {
@@ -286,43 +275,26 @@ export default function RequestDetails() {
           border-radius: 6px; padding: 2px 8px; background: #fff; white-space: nowrap;
         }
 
-        /* ID chip */
-        .rd-head__right { display: flex; align-items: center; }
-        .rd-idchip {
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid #e2e8f0;
-          background: #f1f5f9;
-          color: #0f172a;
-          font-size: 12px;
-          letter-spacing: .02em;
+        /* Timeline */
+        .tl { padding: 8px 12px; }
+        .tl-item { position: relative; display: grid; grid-template-columns: 14px 1fr; gap: 10px; padding: 10px 0; }
+        .tl-item + .tl-item { border-top: 1px solid #e5e7eb; }
+        .tl-dot {
+          width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; margin: 6px 3px 0 3px;
         }
-        .rd-idtext {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        .tl-body { min-width: 0; }
+        .tl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .tl-badge {
+          display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid;
+          font-size: 12px; font-weight: 800; letter-spacing: .02em; white-space: nowrap;
         }
-        .rd-idbtn {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 24px; height: 24px; border-radius: 999px;
-          border: 1px solid #e2e8f0; background: #fff; color: #334155;
-          cursor: pointer;
-          transition: transform .08s ease, box-shadow .12s ease, background .12s ease;
-        }
-        .rd-idbtn:hover { background: #f8fafc; }
-        .rd-idbtn:active { transform: translateY(0.5px); }
-        .rd-copied {
-          position: absolute;
-          right: 6px; top: -18px;
-          font-size: 10px; color: #16a34a;
-        }
+        .tl-when { color: #64748b; font-size: 12px; }
+        .tl-sub { color: #334155; font-size: 14px; margin-top: 2px; }
+        .tl-note { margin-top: 4px; color: #0f172a; font-size: 15px; }
 
+        /* Decision */
         .rd-decision { padding: 12px; background: #f8fafc; }
-        .rd-decision__title {
-          font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 8px;
-        }
+        .rd-decision__title { font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 8px; }
         .rd-textarea {
           width: 100%; min-height: 110px; border: 1px solid #e5e7eb; background: #fff;
           border-radius: 12px; padding: 10px; font-size: 14px; margin-bottom: 10px;

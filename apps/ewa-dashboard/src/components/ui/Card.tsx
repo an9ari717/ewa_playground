@@ -8,25 +8,38 @@ type CardProps = {
   style?: React.CSSProperties;
 };
 
-export default function Card({ title, stickyHeader, stickyTop, children, style }: CardProps) {
+export default function Card({
+  title,
+  stickyHeader,
+  stickyTop,
+  children,
+  style,
+}: CardProps) {
   const base: React.CSSProperties = {
-    background: "#fff",
-    border: "1px solid #e5e7eb",
+    background: "var(--card)",            // ✅ theme-aware
+    border: "1px solid var(--border)",    // ✅ theme-aware
     borderRadius: 16,
     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
     overflow: "hidden",
+    color: "var(--text)",                 // ✅ text follows theme
     ...style,
   };
+
   const header: React.CSSProperties = {
     position: stickyHeader ? "sticky" : undefined,
     top: stickyTop,
     zIndex: 5,
-    background: "linear-gradient(90deg,#eff6ff,#f8fafc)",
+    background: "var(--bg-soft)",         // ✅ works in light & dark
     padding: "10px 16px",
-    borderBottom: "1px solid #e5e7eb",
+    borderBottom: "1px solid var(--border)",
   };
+
   const titleCss: React.CSSProperties = {
-    fontSize: 13, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#1e3a8a",
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text)",                 // ✅ no more hard-coded blue
   };
 
   return (

@@ -19,7 +19,11 @@ type Item = {
 function formatDate(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
 function labelFromKey(key?: string) {
@@ -27,16 +31,23 @@ function labelFromKey(key?: string) {
   const K = key.toUpperCase();
   if (K === "LEAVE") return "Leave";
   if (K === "PROCUREMENT") return "Procurement";
-  if (K === "IT_SUPPORT" || K === "IT-SUPPORT" || K === "ITSUPPORT") return "IT Support";
+  if (K === "IT_SUPPORT" || K === "IT-SUPPORT" || K === "ITSUPPORT")
+    return "IT Support";
   return key;
 }
 
 function resolveTypeLabel(r: any): string {
-  if (typeof r?.type === "string" && r.type.trim()) return labelFromKey(r.type) ?? r.type;
+  if (typeof r?.type === "string" && r.type.trim())
+    return labelFromKey(r.type) ?? r.type;
   const obj = typeof r?.type === "object" ? r.type : undefined;
-  const objLabel = obj?.name ?? obj?.title ?? labelFromKey(obj?.key) ?? obj?.id;
+  const objLabel =
+    obj?.name ?? obj?.title ?? labelFromKey(obj?.key) ?? obj?.id;
   if (objLabel) return String(objLabel);
-  const other = labelFromKey(r?.typeKey) ?? labelFromKey(r?.typeId) ?? r?.typeName ?? r?.typeTitle;
+  const other =
+    labelFromKey(r?.typeKey) ??
+    labelFromKey(r?.typeId) ??
+    r?.typeName ??
+    r?.typeTitle;
   return other ? String(other) : "—";
 }
 
@@ -44,7 +55,12 @@ export default function Dashboard() {
   const nav = useNavigate();
 
   // newest 5 of the current user's requests
-  const { data, isLoading, isError, refetch, isFetching } = useRequests("my", undefined, 1, 5);
+  const { data, isLoading, isError, refetch, isFetching } = useRequests(
+    "my",
+    undefined,
+    1,
+    5
+  );
 
   const items: Item[] = useMemo(() => {
     const list = data?.items ?? [];
@@ -61,7 +77,9 @@ export default function Dashboard() {
   // Quick stats computed locally
   const stats = useMemo(() => {
     const all = data?.total ?? 0;
-    let pending = 0, approved = 0, rejected = 0;
+    let pending = 0,
+      approved = 0,
+      rejected = 0;
     (data?.items ?? []).forEach((r: any) => {
       const s = String(r.status ?? "").toUpperCase();
       if (s === "PENDING") pending++;
@@ -72,7 +90,10 @@ export default function Dashboard() {
   }, [data]);
 
   const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
   return (
@@ -81,7 +102,11 @@ export default function Dashboard() {
       <div className="dash-topbar">
         <div className="dash-topbar__left">Welcome! • {today}</div>
         <div className="dash-topbar__right">
-          <Button size="sm" variant="primary" onClick={() => nav("/app/employee/request")}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => nav("/app/employee/request")}
+          >
             + New Request
           </Button>
         </div>
@@ -113,10 +138,19 @@ export default function Dashboard() {
         <div className="dash-cardbar">
           <div className="dash-cardbar__spacer" />
           <div className="dash-cardbar__actions">
-            <Button size="sm" variant="secondary" onClick={() => refetch()} disabled={isFetching}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => refetch()}
+              disabled={isFetching}
+            >
               {isFetching ? "Refreshing…" : "Refresh"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => nav("/app/employee/requests")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => nav("/app/employee/requests")}
+            >
               View all
             </Button>
           </div>
@@ -132,7 +166,9 @@ export default function Dashboard() {
           ) : isError ? (
             <div className="empty empty--error">
               <div className="empty__title">Failed to load.</div>
-              <Button size="sm" onClick={() => refetch()}>Retry</Button>
+              <Button size="sm" onClick={() => refetch()}>
+                Retry
+              </Button>
             </div>
           ) : items.length === 0 ? (
             <div className="empty">
@@ -156,7 +192,9 @@ export default function Dashboard() {
                   title={it.title || it.id}
                   type={it.type}
                   createdAt={formatDate(it.createdAt)}
-                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
+                  createdBy={
+                    it.createdBy?.name || it.createdBy?.email || "—"
+                  }
                   status={it.status === "COMPLETED" ? "APPROVED" : it.status}
                   onOpen={() => nav(`/app/requests/${it.id}`)}
                 />
@@ -169,12 +207,21 @@ export default function Dashboard() {
       {/* Styles */}
       <style>{`
         .dash-topbar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 12px; margin-bottom: 8px;
-          border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 12px;
-          font-size: 13px; color: #475569;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          margin-bottom: 8px;
+          border: 1px solid var(--border);
+          background: var(--card);
+          border-radius: 12px;
+          font-size: 13px;
+          color: var(--muted);
         }
-        .dash-topbar__right { display: flex; gap: 8px; }
+        .dash-topbar__right {
+          display: flex;
+          gap: 8px;
+        }
 
         .dash-grid {
           display: grid;
@@ -182,53 +229,107 @@ export default function Dashboard() {
           gap: 12px;
           margin: 12px 0 16px 0;
         }
+
         .kpi {
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border);
           border-radius: 12px;
-          background: #fff;
+          background: var(--card);
           padding: 12px;
         }
-        .kpi__label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
-        .kpi__value { font-size: 24px; font-weight: 800; line-height: 1; color: #0f172a; }
+        .kpi__label {
+          font-size: 12px;
+          color: var(--muted);
+          margin-bottom: 6px;
+        }
+        .kpi__value {
+          font-size: 24px;
+          font-weight: 800;
+          line-height: 1;
+          color: var(--text);
+        }
 
-        .kpi--pending .kpi__value { color: #b45309; }   /* amber-700 */
-        .kpi--approved .kpi__value { color: #15803d; }  /* green-700 */
-        .kpi--rejected .kpi__value { color: #b91c1c; }  /* red-700 */
+        .kpi--pending .kpi__value { color: #fbbf24; }   /* amber-400-ish on both themes */
+        .kpi--approved .kpi__value { color: #4ade80; }  /* green-400 */
+        .kpi--rejected .kpi__value { color: #f87171; }  /* red-400 */
 
         .dash-cardbar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-soft);
         }
-        .dash-cardbar__actions { display: flex; gap: 8px; }
-        .dash-cardbar__spacer { flex: 1; }
+        .dash-cardbar__actions {
+          display: flex;
+          gap: 8px;
+        }
+        .dash-cardbar__spacer {
+          flex: 1;
+        }
 
-        .dash-list { padding: 12px; }
-        .list { display: grid; gap: 12px; }
+        .dash-list {
+          padding: 12px;
+        }
+        .list {
+          display: grid;
+          gap: 12px;
+        }
 
         .empty {
-          display: grid; place-items: center; gap: 8px;
-          padding: 32px 12px; color: #6b7280; font-size: 14px;
+          display: grid;
+          place-items: center;
+          gap: 8px;
+          padding: 32px 12px;
+          color: var(--muted);
+          font-size: 14px;
         }
-        .empty__dot { width: 8px; height: 8px; border-radius: 999px; background: #e5e7eb; }
-        .empty__text { opacity: .9; }
-        .empty--error .empty__title { margin-bottom: 12px; color: #dc2626; font-weight: 600; }
+        .empty__dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: var(--border);
+        }
+        .empty__text {
+          opacity: .9;
+        }
+        .empty--error .empty__title {
+          margin-bottom: 12px;
+          color: #f87171;
+          font-weight: 600;
+        }
 
-        .skeletons { display: grid; gap: 12px; }
+        .skeletons {
+          display: grid;
+          gap: 12px;
+        }
         .skeleton {
           height: 74px;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border);
           border-radius: 12px;
-          background: linear-gradient(90deg, #f8fafc 25%, #eef2f7 37%, #f8fafc 63%);
+          background: linear-gradient(
+            90deg,
+            var(--bg-soft) 25%,
+            var(--card) 37%,
+            var(--bg-soft) 63%
+          );
           background-size: 400% 100%;
           animation: d-shimmer 1.2s ease-in-out infinite;
         }
-        @keyframes d-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+        @keyframes d-shimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: 0 0; }
+        }
 
         @media (max-width: 900px) {
-          .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .dash-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
         @media (max-width: 600px) {
-          .dash-grid { grid-template-columns: 1fr; }
+          .dash-grid {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
     </Page>

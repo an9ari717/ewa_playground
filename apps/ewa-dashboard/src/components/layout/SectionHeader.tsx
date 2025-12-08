@@ -16,13 +16,18 @@ export default function SectionHeader({ title, onBack, right, stickyTop }: Props
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderBottom: "1px solid #e5e7eb",
+    borderBottom: "1px solid var(--border)",      // ✅ theme-aware border
     padding: "8px 0 12px",
     marginBottom: 16,
-    background: stickyTop !== undefined ? "#f8fafc" : "transparent",
+    background:
+      stickyTop !== undefined ? "var(--bg)" : "transparent", // ✅ no hard-coded light bg
   };
+
   const h1: React.CSSProperties = {
-    fontSize: 26, fontWeight: 700, letterSpacing: "-0.01em", color: "#0f172a",
+    fontSize: 26,
+    fontWeight: 700,
+    letterSpacing: "-0.01em",
+    color: "var(--text)",                              // ✅ title follows theme
   };
 
   return (
@@ -30,7 +35,11 @@ export default function SectionHeader({ title, onBack, right, stickyTop }: Props
       <h1 style={h1}>{title}</h1>
       <div style={{ display: "flex", gap: 8 }}>
         {right}
-        {onBack ? <Button variant="ghost" onClick={onBack}>Back</Button> : null}
+        {onBack ? (
+          <Button variant="ghost" onClick={onBack}>
+            Back
+          </Button>
+        ) : null}
       </div>
     </div>
   );

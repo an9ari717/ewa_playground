@@ -12,21 +12,7 @@ type Props = {
   onOpen?: () => void;
 };
 
-function borderByStatus(s?: string) {
-  switch (s) {
-    case "APPROVED":
-    case "COMPLETED": // treat completed as approved (green border)
-      return "1px solid #86efac"; // green-300
-    case "REJECTED":
-      return "1px solid #fecaca"; // red-200
-    case "PENDING":
-      return "1px solid #fde68a"; // amber-300
-    case "ARCHIVED":
-    default:
-      return "1px solid #e5e7eb"; // gray-200
-  }
-}
-
+// Card border is now neutral – color lives in the badge, not the whole box
 export default function RequestCard({
   id,
   title,
@@ -39,7 +25,7 @@ export default function RequestCard({
   const visualStatus = (status === "COMPLETED" ? "APPROVED" : status) as Props["status"];
 
   return (
-    <div className="rcard" style={{ border: borderByStatus(visualStatus) }}>
+    <div className="rcard">
       {/* Left section */}
       <div className="rcard-left">
         <div className="rcard-head">
@@ -76,16 +62,27 @@ export default function RequestCard({
       <style>{`
         .rcard {
           border-radius: 12px;
-          background: #fff;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+          background: var(--card);
+          border: 1px solid var(--border);      /* ✅ neutral border */
+          box-shadow: 0 1px 2px rgba(15,23,42,0.04);
           padding: 12px;
           display: grid;
           grid-template-columns: 1fr auto;
           align-items: center;
           gap: 12px;
-          transition: box-shadow .15s ease, transform .12s ease, border-color .15s ease;
+          transition:
+            box-shadow .15s ease,
+            transform .12s ease,
+            background-color .15s ease,
+            border-color .15s ease;
+          color: var(--text);
         }
-        .rcard:hover { box-shadow: 0 6px 16px rgba(15,23,42,.06); }
+        .rcard:hover {
+          box-shadow: 0 8px 20px rgba(15,23,42,.10);
+          background: var(--bg-soft);
+          border-color: rgba(148,163,184,0.6);
+        }
+
         .rcard-left { min-width: 0; }
 
         .rcard-head {
@@ -96,9 +93,9 @@ export default function RequestCard({
           min-width: 0;
         }
         .rcard-title {
-          font-weight: 800;
+          font-weight: 700;
           font-size: 14px;
-          color: #0f172a;
+          color: var(--text);
           letter-spacing: .01em;
           white-space: nowrap;
           overflow: hidden;
@@ -107,11 +104,11 @@ export default function RequestCard({
         }
         .rcard-type {
           font-size: 12px;
-          color: #6b7280;
-          border: 1px solid #e5e7eb;
-          border-radius: 6px;
-          padding: 1px 6px;
-          background: #fff;
+          color: var(--muted);
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          padding: 1px 8px;
+          background: var(--card);
           white-space: nowrap;
         }
 
@@ -120,7 +117,8 @@ export default function RequestCard({
           flex-wrap: wrap;
           gap: 12px;
           font-size: 12px;
-          color: #6b7280;
+          color: var(--muted);
+          margin-top: 2px;
         }
         .rcard-status {
           display: inline-flex;

@@ -6,6 +6,7 @@ import Card from "../../components/ui/Card";
 import Button from "../../components/Button";
 import RequestCard from "../../components/requests/RequestCard";
 import { useRequests } from "../../hooks/useRequests";
+import Loader from "../../components/Loader";
 
 type Item = {
   id: string;
@@ -19,7 +20,11 @@ type Item = {
 function formatDate(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
 function labelFromKey(key?: string) {
@@ -27,16 +32,25 @@ function labelFromKey(key?: string) {
   const K = key.toUpperCase();
   if (K === "LEAVE") return "Leave";
   if (K === "PROCUREMENT") return "Procurement";
-  if (K === "IT_SUPPORT" || K === "IT-SUPPORT" || K === "ITSUPPORT") return "IT Support";
+  if (K === "IT_SUPPORT" || K === "IT-SUPPORT" || K === "ITSUPPORT")
+    return "IT Support";
   return key;
 }
 
 function resolveTypeLabel(r: any): string {
-  if (typeof r?.type === "string" && r.type.trim()) return labelFromKey(r.type) ?? r.type;
+  if (typeof r?.type === "string" && r.type.trim())
+    return labelFromKey(r.type) ?? r.type;
+
   const obj = typeof r?.type === "object" ? r.type : undefined;
-  const objLabel = obj?.name ?? obj?.title ?? labelFromKey(obj?.key) ?? obj?.id;
+  const objLabel =
+    obj?.name ?? obj?.title ?? labelFromKey(obj?.key) ?? obj?.id;
   if (objLabel) return String(objLabel);
-  const other = labelFromKey(r?.typeKey) ?? labelFromKey(r?.typeId) ?? r?.typeName ?? r?.typeTitle;
+
+  const other =
+    labelFromKey(r?.typeKey) ??
+    labelFromKey(r?.typeId) ??
+    r?.typeName ??
+    r?.typeTitle;
   return other ? String(other) : "—";
 }
 
@@ -93,7 +107,7 @@ export default function DirectorDashboard() {
     let approved = 0;
     let rejected = 0;
     (recentItems ?? []).forEach((r) => {
-      const s = r.status;
+      const s = r.status.toUpperCase();
       if (s === "APPROVED" || s === "COMPLETED") approved++;
       else if (s === "REJECTED") rejected++;
     });
@@ -101,8 +115,18 @@ export default function DirectorDashboard() {
   }, [inboxData, recentItems]);
 
   const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
+
+  const normalize = (s?: Item["status"]) =>
+    (String(s ?? "PENDING").toUpperCase() === "COMPLETED" ? "APPROVED" : s) as
+      | "PENDING"
+      | "APPROVED"
+      | "REJECTED"
+      | "ARCHIVED";
 
   return (
     <Page title="Director Dashboard" maxWidth={1100} leftOffset={60}>
@@ -110,7 +134,11 @@ export default function DirectorDashboard() {
       <div className="dash-topbar">
         <div className="dash-topbar__left">Welcome! • {today}</div>
         <div className="dash-topbar__right">
-          <Button size="sm" variant="primary" onClick={() => nav("/app/director/inbox")}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => nav("/app/director/inbox")}
+          >
             Go to Inbox
           </Button>
         </div>
@@ -133,14 +161,33 @@ export default function DirectorDashboard() {
       </div>
 
       {/* Inbox preview */}
-      <Card title="Awaiting Your Review" stickyHeader stickyTop={0}>
-        <div className="dash-cardbar">
-          <div className="dash-cardbar__spacer" />
+      <Card stickyHeader stickyTop={0}>
+        {/* unified header row */}
+        <div className="dash-cardbar dash-cardbar--head">
+          <div className="dash-cardbar__left">
+            <div className="dash-cardbar__title">Awaiting your review</div>
+            <div className="dash-cardbar__subtitle">
+              Requests currently assigned to you for approval.
+            </div>
+          </div>
           <div className="dash-cardbar__actions">
-            <Button size="sm" variant="secondary" onClick={() => refetchInbox()} disabled={fetchingInbox}>
+            <span className="dash-chip">
+              <span className="dash-chip__dot" />
+              Total {inboxData?.total ?? 0}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => refetchInbox()}
+              disabled={fetchingInbox}
+            >
               {fetchingInbox ? "Refreshing…" : "Refresh"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => nav("/app/director/inbox")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => nav("/app/director/inbox")}
+            >
               View inbox
             </Button>
           </div>
@@ -148,11 +195,13 @@ export default function DirectorDashboard() {
 
         <div className="dash-list">
           {inboxLoading ? (
-            <div className="skeletons"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>
+            <Loader fullHeight />
           ) : inboxError ? (
             <div className="empty empty--error">
               <div className="empty__title">Failed to load.</div>
-              <Button size="sm" onClick={() => refetchInbox()}>Retry</Button>
+              <Button size="sm" onClick={() => refetchInbox()}>
+                Retry
+              </Button>
             </div>
           ) : inboxItems.length === 0 ? (
             <div className="empty">
@@ -168,8 +217,10 @@ export default function DirectorDashboard() {
                   title={it.title || it.id}
                   type={it.type}
                   createdAt={formatDate(it.createdAt)}
-                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
-                  status={it.status === "COMPLETED" ? "APPROVED" : it.status}
+                  createdBy={
+                    it.createdBy?.name || it.createdBy?.email || "—"
+                  }
+                  status={normalize(it.status)}
                   onOpen={() => nav(`/app/requests/${it.id}`)}
                 />
               ))}
@@ -179,14 +230,32 @@ export default function DirectorDashboard() {
       </Card>
 
       {/* Recently handled */}
-      <Card title="Recently Handled" stickyHeader stickyTop={0} style={{ marginTop: 14 }}>
-        <div className="dash-cardbar">
-          <div className="dash-cardbar__spacer" />
+      <Card stickyHeader stickyTop={0} style={{ marginTop: 14 }}>
+        <div className="dash-cardbar dash-cardbar--head">
+          <div className="dash-cardbar__left">
+            <div className="dash-cardbar__title">Recently handled</div>
+            <div className="dash-cardbar__subtitle">
+              Approvals and rejections you&apos;ve made in the recent period.
+            </div>
+          </div>
           <div className="dash-cardbar__actions">
-            <Button size="sm" variant="secondary" onClick={() => refetchRecent()} disabled={fetchingRecent}>
+            <span className="dash-chip">
+              <span className="dash-chip__dot" />
+              Total {recentData?.total ?? 0}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => refetchRecent()}
+              disabled={fetchingRecent}
+            >
               {fetchingRecent ? "Refreshing…" : "Refresh"}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => nav("/app/archive")}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => nav("/app/archive")}
+            >
               View archive
             </Button>
           </div>
@@ -194,11 +263,13 @@ export default function DirectorDashboard() {
 
         <div className="dash-list">
           {recentLoading ? (
-            <div className="skeletons"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>
+            <Loader fullHeight />
           ) : recentError ? (
             <div className="empty empty--error">
               <div className="empty__title">Failed to load.</div>
-              <Button size="sm" onClick={() => refetchRecent()}>Retry</Button>
+              <Button size="sm" onClick={() => refetchRecent()}>
+                Retry
+              </Button>
             </div>
           ) : recentItems.length === 0 ? (
             <div className="empty">
@@ -214,8 +285,10 @@ export default function DirectorDashboard() {
                   title={it.title || it.id}
                   type={it.type}
                   createdAt={formatDate(it.createdAt)}
-                  createdBy={it.createdBy?.name || it.createdBy?.email || "—"}
-                  status={it.status === "COMPLETED" ? "APPROVED" : it.status}
+                  createdBy={
+                    it.createdBy?.name || it.createdBy?.email || "—"
+                  }
+                  status={normalize(it.status)}
                   onOpen={() => nav(`/app/requests/${it.id}`)}
                 />
               ))}
@@ -226,12 +299,21 @@ export default function DirectorDashboard() {
 
       <style>{`
         .dash-topbar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 12px; margin-bottom: 8px;
-          border: 1px solid #e5e7eb; background: #f8fafc; border-radius: 12px;
-          font-size: 13px; color: #475569;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          margin-bottom: 8px;
+          border-radius: 12px;
+          border: 1px solid var(--border);
+          background: var(--card);
+          font-size: 13px;
+          color: var(--muted);
         }
-        .dash-topbar__right { display: flex; gap: 8px; }
+        .dash-topbar__right {
+          display: flex;
+          gap: 8px;
+        }
 
         .dash-grid {
           display: grid;
@@ -240,46 +322,133 @@ export default function DirectorDashboard() {
           margin: 12px 0 16px 0;
         }
         .kpi {
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border);
           border-radius: 12px;
-          background: #fff;
+          background: var(--card);
           padding: 12px;
         }
-        .kpi__label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
-        .kpi__value { font-size: 26px; font-weight: 800; line-height: 1; color: #0f172a; }
+        .kpi__label {
+          font-size: 12px;
+          color: var(--muted);
+          margin-bottom: 6px;
+        }
+        .kpi__value {
+          font-size: 26px;
+          font-weight: 800;
+          line-height: 1;
+          color: var(--text);
+        }
         .kpi--pending .kpi__value { color: #b45309; }
         .kpi--approved .kpi__value { color: #15803d; }
         .kpi--rejected .kpi__value { color: #b91c1c; }
 
         .dash-cardbar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 12px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-soft);
         }
-        .dash-cardbar__actions { display: flex; gap: 8px; }
-        .dash-cardbar__spacer { flex: 1; }
+        .dash-cardbar--head {
+          border-radius: 12px 12px 0 0;
+        }
+        .dash-cardbar__left {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .dash-cardbar__title {
+          font-size: 13px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .09em;
+          color: var(--text);
+        }
+        .dash-cardbar__subtitle {
+          font-size: 12px;
+          color: var(--muted);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .dash-cardbar__actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-shrink: 0;
+        }
 
-        .dash-list { padding: 12px; }
-        .list { display: grid; gap: 12px; }
+        .dash-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--card);
+          font-weight: 700;
+          color: var(--text);
+          letter-spacing: .02em;
+          font-size: 11px;
+        }
+        .dash-chip__dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #22c55e;
+        }
+
+        .dash-list {
+          padding: 12px;
+        }
+        .list {
+          display: grid;
+          gap: 12px;
+        }
 
         .empty {
-          display: grid; place-items: center; gap: 8px;
-          padding: 32px 12px; color: #6b7280; font-size: 14px;
+          display: grid;
+          place-items: center;
+          gap: 8px;
+          padding: 32px 12px;
+          color: var(--muted);
+          font-size: 14px;
         }
-        .empty__dot { width: 8px; height: 8px; border-radius: 999px; background: #e5e7eb; }
-        .empty__text { opacity: .9; }
-
-        .empty--error .empty__title { margin-bottom: 12px; color: #dc2626; font-weight: 600; }
-
-        .skeletons { display: grid; gap: 12px; }
-        .skeleton {
-          height: 74px;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          background: linear-gradient(90deg, #f8fafc 25%, #eef2f7 37%, #f8fafc 63%);
-          background-size: 400% 100%;
-          animation: d-shimmer 1.2s ease-in-out infinite;
+        .empty__dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: var(--border);
         }
-        @keyframes d-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+        .empty__text {
+          opacity: .9;
+        }
+        .empty--error .empty__title {
+          margin-bottom: 12px;
+          color: #dc2626;
+          font-weight: 600;
+        }
+
+        @media (max-width: 800px) {
+          .dash-grid {
+            grid-template-columns: 1fr;
+          }
+          .dash-cardbar {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .dash-cardbar__subtitle {
+            white-space: normal;
+          }
+          .dash-cardbar__actions {
+            width: 100%;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+        }
       `}</style>
     </Page>
   );
